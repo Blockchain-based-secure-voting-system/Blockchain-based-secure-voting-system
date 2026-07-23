@@ -1,36 +1,7 @@
-//! 1-out-of-2 Disjunctive Chaum-Pedersen Zero-Knowledge Range Proof
-//!
-//! # Soundness and Completeness Argument
-//!
-//! ## Statement
-//! Given a public key PK = sk * G and an ElGamal ciphertext C = (C1, C2) = (r * G, r * PK + m * G),
-//! the prover demonstrates in zero-knowledge that the vote scalar `m` belongs strictly to {0, 1},
-//! without revealing whether m = 0 or m = 1.
-//!
-//! ## Mathematical Formulation
-//! - Branch 0 (m = 0): (C1, C2) = (r * G, r * PK)
-//! - Branch 1 (m = 1): (C1, C2 - G) = (r * G, r * PK)
-//!
-//! ## Soundness (Special Soundness)
-//! If a prover attempts to submit an out-of-range vote (e.g., m = 2 or m = -1), they do not know a valid
-//! randomness `r` that satisfies either Branch 0 or Branch 1 simultaneously.
-//! In the Fiat-Shamir transform, the joint challenge c = c0 + c1 mod q binds both branches.
-//! To forge a proof for an invalid vote, the prover would have to predict the hash output or break the
-//! discrete logarithm problem on BN254 G1. Thus, soundness holds with overwhelming probability.
-//!
-//! ## Completeness
-//! An honest prover with valid randomness `r` for real branch `m` (0 or 1) can freely simulate the unused
-//! branch `1-m` by selecting random challenge c_{1-m} and response s_{1-m}, and setting commitments
-//! accordingly. The real branch then computes c_m = c - c_{1-m} and s_m = w + c_m * r.
-//! Both branches will satisfy the verifier's algebraic equations exactly.
-//!
-//! ## Zero-Knowledge
-//! The simulated branch is computationally indistinguishable from a true transcript due to uniform sampling
-//! of c_{1-m} and s_{1-m}. The Fiat-Shamir hash ensures zero-knowledge simulator equivalence in the random oracle model.
-
 use ark_bn254::{Fr, G1Projective};
 use ark_ec::Group;
 use ark_ff::{PrimeField, UniformRand};
+use candid::CandidType;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tiny_keccak::{Hasher, Keccak};
@@ -55,7 +26,7 @@ pub struct DisjunctiveRangeProof {
 }
 
 /// Hex-serialized representation of Disjunctive Range Proof for transport (Candid / JSON RPC)
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(CandidType, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HexDisjunctiveRangeProof {
     pub a0_hex: String,
     pub b0_hex: String,

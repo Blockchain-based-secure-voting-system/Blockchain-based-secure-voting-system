@@ -1,7 +1,7 @@
 use candid::{CandidType, Deserialize, Principal};
 use ic_cdk::api::time;
 use ic_cdk::caller;
-use ic_cdk_macros::*;
+use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 

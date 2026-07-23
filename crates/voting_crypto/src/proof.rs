@@ -1,13 +1,14 @@
 use ark_bn254::{Fr, G1Projective};
 use ark_ec::Group;
 use ark_ff::{PrimeField, UniformRand};
+use candid::CandidType;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tiny_keccak::{Hasher, Keccak};
 
 use crate::elgamal::{Ciphertext, PublicKey};
 use crate::serde_utils::{
-    fr_from_hex, fr_to_hex, g1_from_hex, g1_to_hex, g1_to_bytes
+    fr_from_hex, fr_to_hex, g1_from_hex, g1_to_bytes, g1_to_hex,
 };
 use crate::CryptoError;
 
@@ -23,7 +24,7 @@ pub struct ChaumPedersenProof {
 }
 
 /// Serialized struct of proof for Candid / JSON RPC transport
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(CandidType, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HexChaumPedersenProof {
     pub a_hex: String,
     pub b_hex: String,

@@ -263,4 +263,34 @@ mod tests {
             Err(CryptoError::InvalidProof)
         );
     }
+
+    #[test]
+    fn test_range_proof_invalid_challenge_sum_fails() {
+        let mut rng = thread_rng();
+        let keypair = KeyPair::generate(&mut rng);
+        let (ct, r) = encrypt(&keypair.pk, 1, &mut rng);
+
+        let mut proof = generate_range_proof(&keypair.pk, &ct, 1, &r, &mut rng).unwrap();
+        proof.c0 += Fr::from(1u64); // Break c0 + c1 == c
+
+        assert_eq!(
+            verify_range_proof(&keypair.pk, &ct, &proof),
+            Err(CryptoError::InvalidProof)
+        );
+    }
+
+    #[test]
+    fn test_range_proof_wrong_pk_fails() {
+        let mut rng = thread_rng();
+        let keypair1 = KeyPair::generate(&mut rng);
+        let keypair2 = KeyPair::generate(&mut rng);
+        let (ct, r) = encrypt(&keypair1.pk, 1, &mut rng);
+
+        let proof = generate_range_proof(&keypair1.pk, &ct, 1, &r, &mut rng).unwrap();
+
+        assert_eq!(
+            verify_range_proof(&keypair2.pk, &ct, &proof),
+            Err(CryptoError::InvalidProof)
+        );
+    }
 }

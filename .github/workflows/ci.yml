@@ -28,8 +28,11 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run Unit Tests (Cryptographic Suite & CLI)
-        run: cargo test --package voting_crypto --package cli --verbose
+      - name: Fast-Fail Check (Native CLI & Crypto Crate)
+        run: cargo check --package voting_crypto --package cli --verbose
+
+      - name: Run Unit Tests (Cryptographic Suite, Canister, & CLI)
+        run: cargo test --package voting_crypto --package canister --package cli --verbose
 
       # Canister only — mio/tokio-based crates (cli) must never be built against wasm32-unknown-unknown
       - name: Check Canister Wasm Target Build

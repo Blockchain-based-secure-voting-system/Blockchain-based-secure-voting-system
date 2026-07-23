@@ -400,3 +400,98 @@ fn has_nullifier_been_used(nullifier: Vec<u8>) -> bool {
 
 // Generate candid interface automatically
 ic_cdk::export_candid!();
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::thread_rng;
+    use voting_crypto::{encrypt, generate_range_proof, compute_nullifier, KeyPair};
+
+    #[test]
+    fn test_canister_election_lifecycle_and_phase_guards() {
+        let mut rng = thread_rng();
+        let keypair = KeyPair::generate(&mut rng);
+        let trustee_pk_hex = keypair.pk.to_hex();
+
+        // 1. Create election
+        let create_res = create_election(
+            "Test Referendum".to_string(),
+            trustee_pk_hex.clone(),
+            100,
+            200,
+        );
+        assert!(create_res.is_ok());
+
+        let details = get_election_details();
+        assert_eq!(details.phase, ElectionPhase::Setup);
+
+        // 2. Guard Check: Cannot cast ballot in Setup phase
+        let dummy_ballot = Ballot {
+            nullifier: vec![0u8; 32],
+            ciphertext: HexCiphertext {
+                c1_hex: "".to_string(),
+                c2_hex: "".to_string(),
+            },
+            range_proof: HexDisjunctiveRangeProof {
+                a0_hex: "".to_string(),
+                b0_hex: "".to_string(),
+                a1_hex: "".to_string(),
+                b1_hex: "".to_string(),
+                c0_hex: "".to_string(),
+                c1_hex: "".to_string(),
+                s0_hex: "".to_string(),
+                s1_hex: "".to_string(),
+            },
+        };
+
+        let cast_err = cast_ballot(dummy_ballot.clone());
+        assert!(cast_err.is_err());
+        assert_eq!(cast_err.unwrap_err(), "Voting is not currently open");
+
+        // 3. Register voters in Setup phase
+        let voter_principal = Principal::anonymous();
+        let reg_res = register_voters(vec![voter_principal]);
+        assert_eq!(reg_res.unwrap(), 1);
+        assert!(is_voter_registered(voter_principal));
+
+        // 4. Open voting
+        let open_res = open_voting();
+        assert!(open_res.is_ok());
+        assert_eq!(get_election_details().phase, ElectionPhase::Voting);
+
+        // 5. Guard Check: Cannot register voters when voting is OPEN
+        let reg_open_err = register_voters(vec![voter_principal]);
+        assert!(reg_open_err.is_err());
+
+        // 6. Cast valid ballot in Voting phase
+        let (ct, r) = encrypt(&keypair.pk, 1, &mut rng);
+        let hex_ct = HexCiphertext::from_ciphertext(&ct);
+        let range_proof = generate_range_proof(&keypair.pk, &ct, 1, &r, &mut rng).unwrap();
+        let hex_range_proof = HexDisjunctiveRangeProof::from_proof(&range_proof);
+        let nullifier = compute_nullifier(b"voter_secret_alice", "test_election");
+
+        let valid_ballot = Ballot {
+            nullifier: nullifier.to_vec(),
+            ciphertext: hex_ct,
+            range_proof: hex_range_proof,
+        };
+
+        let cast_res = cast_ballot(valid_ballot.clone());
+        assert!(cast_res.is_ok());
+        assert!(has_nullifier_been_used(nullifier.to_vec()));
+
+        // 7. Guard Check: Double-voting prevention
+        let double_vote_err = cast_ballot(valid_ballot);
+        assert!(double_vote_err.is_err());
+        assert!(double_vote_err.unwrap_err().contains("Double-vote detected"));
+
+        // 8. Close voting
+        let close_res = close_voting();
+        assert!(close_res.is_ok());
+        assert_eq!(get_election_details().phase, ElectionPhase::Tallying);
+
+        // 9. Guard Check: Cannot cast ballot in Tallying phase
+        let cast_tally_err = cast_ballot(dummy_ballot);
+        assert!(cast_tally_err.is_err());
+    }
+}

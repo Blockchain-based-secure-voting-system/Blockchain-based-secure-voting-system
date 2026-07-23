@@ -29,4 +29,19 @@ mod tests {
         let n3 = compute_nullifier(secret, "different_election");
         assert_ne!(n1, n3);
     }
+
+    #[test]
+    fn test_nullifier_uniqueness() {
+        let secret1 = b"voter_secret_alice";
+        let secret2 = b"voter_secret_bob";
+        let election = "referendum_2026";
+
+        let n1 = compute_nullifier(secret1, election);
+        let n2 = compute_nullifier(secret2, election);
+
+        assert_ne!(n1, n2, "Different voters in same election must produce distinct nullifiers");
+
+        let n1_other_election = compute_nullifier(secret1, "referendum_2027");
+        assert_ne!(n1, n1_other_election, "Same voter in different elections must produce distinct nullifiers");
+    }
 }

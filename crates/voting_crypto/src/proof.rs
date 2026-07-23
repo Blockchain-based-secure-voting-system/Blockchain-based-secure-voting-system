@@ -207,4 +207,19 @@ mod tests {
         let res = verify_decryption_proof(&keypair.pk, &vote1, &proof);
         assert_eq!(res, Err(CryptoError::InvalidProof));
     }
+
+    #[test]
+    fn test_chaum_pedersen_proof_tampered_commitment_fails() {
+        let mut rng = thread_rng();
+        let keypair = KeyPair::generate(&mut rng);
+
+        let (vote1, _) = encrypt(&keypair.pk, 1, &mut rng);
+        let mut proof = generate_decryption_proof(&keypair.sk, &keypair.pk, &vote1, 1, &mut rng);
+
+        // Tamper commitment point A
+        proof.a += G1Projective::generator();
+
+        let res = verify_decryption_proof(&keypair.pk, &vote1, &proof);
+        assert_eq!(res, Err(CryptoError::InvalidProof));
+    }
 }

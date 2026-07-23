@@ -161,4 +161,19 @@ mod tests {
 
         assert_eq!(decrypted_point, expected_point);
     }
+
+    #[test]
+    fn test_elgamal_roundtrip() {
+        let mut rng = thread_rng();
+        let keypair = KeyPair::generate(&mut rng);
+
+        let vote = 1u64;
+        let (ct, _) = encrypt(&keypair.pk, vote, &mut rng);
+
+        // Decrypt: D = C2 - sk * C1
+        let decrypted_point = ct.c2 - (ct.c1 * keypair.sk);
+        let expected_point = G1Projective::generator() * Fr::from(vote);
+
+        assert_eq!(decrypted_point, expected_point);
+    }
 }

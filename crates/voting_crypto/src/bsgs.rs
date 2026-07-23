@@ -1,5 +1,6 @@
-use ark_bn254::{Fr, G1Affine, G1Projective};
-use ark_ec::{CurveGroup, Group};
+use ark_bn254::{Fr, G1Projective};
+use ark_ec::Group;
+use ark_ff::Zero;
 use std::collections::HashMap;
 
 use crate::serde_utils::g1_to_bytes;

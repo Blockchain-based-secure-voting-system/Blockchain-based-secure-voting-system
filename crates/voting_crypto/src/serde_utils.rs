@@ -1,6 +1,6 @@
 use crate::error::CryptoError;
 use ark_bn254::{Fr, G1Affine, G1Projective};
-use ark_ec::CurveGroup;
+use ark_ec::AffineRepr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 /// Serialize a G1 projective point into compressed hex string

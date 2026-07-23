@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "canisters": {
+    "canister": {
+      "type": "rust",
+      "candid": "canister/canister.did",
+      "package": "canister"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  }
+}

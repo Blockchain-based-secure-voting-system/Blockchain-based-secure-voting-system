@@ -1,0 +1,61 @@
+type ElectionPhase = variant {
+  Setup;
+  Voting;
+  Tallying;
+  Complete;
+};
+
+type HexCiphertext = record {
+  c1_hex: text;
+  c2_hex: text;
+};
+
+type Ballot = record {
+  nullifier: blob;
+  ciphertext: HexCiphertext;
+};
+
+type EncryptedTally = record {
+  c1_hex: text;
+  c2_hex: text;
+  total_ballots: nat64;
+};
+
+type ElectionDetails = record {
+  title: text;
+  admin: principal;
+  trustee_pk_hex: text;
+  phase: ElectionPhase;
+  start_time: nat64;
+  end_time: nat64;
+  registered_voters_count: nat64;
+  total_ballots_cast: nat64;
+  final_tally: opt nat64;
+  proof_verified: bool;
+};
+
+type HexChaumPedersenProof = record {
+  a_hex: text;
+  b_hex: text;
+  s_hex: text;
+  w_hex: text;
+  decrypted_tally: nat64;
+};
+
+type ResultText = variant { Ok: text; Err: text };
+type ResultNat64 = variant { Ok: nat64; Err: text };
+type ResultTally = variant { Ok: EncryptedTally; Err: text };
+
+service : {
+  create_election : (text, text, nat64, nat64) -> (ResultText);
+  register_voters : (vec principal) -> (ResultNat64);
+  open_voting : () -> (ResultText);
+  cast_ballot : (Ballot) -> (ResultText);
+  close_voting : () -> (ResultText);
+  submit_decryption_proof : (HexChaumPedersenProof) -> (ResultNat64);
+
+  get_election_details : () -> (ElectionDetails) query;
+  get_encrypted_tally : () -> (ResultTally) query;
+  is_voter_registered : (principal) -> (bool) query;
+  has_nullifier_been_used : (blob) -> (bool) query;
+}

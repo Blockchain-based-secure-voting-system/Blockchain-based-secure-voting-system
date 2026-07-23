@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/voting_crypto",
+    "canister",
+    "cli"
+]
+resolver = "2"

@@ -11,4 +11,5 @@ ic-cdk = "0.13"
 candid = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 voting_crypto = { path = "../crates/voting_crypto" }
+getrandom = { version = "0.2", features = ["custom"] }
 hex = "0.4"

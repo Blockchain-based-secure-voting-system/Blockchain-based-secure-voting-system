@@ -10,6 +10,14 @@ use voting_crypto::{
     HexChaumPedersenProof, HexCiphertext, HexDisjunctiveRangeProof, PublicKey,
 };
 
+#[cfg(target_arch = "wasm32")]
+fn dummy_getrandom(_buf: &mut [u8]) -> Result<(), getrandom::Error> {
+    Err(getrandom::Error::UNSUPPORTED)
+}
+
+#[cfg(target_arch = "wasm32")]
+getrandom::register_custom_getrandom!(dummy_getrandom);
+
 #[derive(CandidType, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum ElectionPhase {
     Setup,

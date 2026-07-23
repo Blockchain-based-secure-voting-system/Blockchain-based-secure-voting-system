@@ -31,11 +31,13 @@ jobs:
       - name: Run Unit Tests (Cryptographic Suite & CLI)
         run: cargo test --package voting_crypto --package cli --verbose
 
+      # Canister only — mio/tokio-based crates (cli) must never be built against wasm32-unknown-unknown
       - name: Check Canister Wasm Target Build
         run: cargo check --package canister --target wasm32-unknown-unknown --verbose
 
       - name: Run Cargo Clippy (Native CLI & Crypto Crate)
         run: cargo clippy --package voting_crypto --package cli -- -D warnings
 
+      # Canister only — mio/tokio-based crates (cli) must never be built against wasm32-unknown-unknown
       - name: Run Cargo Clippy (Wasm Canister)
         run: cargo clippy --package canister --target wasm32-unknown-unknown -- -D warnings

@@ -6,8 +6,8 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 
 use voting_crypto::{
-    g1_from_hex, g1_to_hex, verify_decryption_proof, Ciphertext, HexChaumPedersenProof,
-    HexCiphertext, PublicKey,
+    g1_from_hex, g1_to_hex, verify_decryption_proof, verify_range_proof, Ciphertext,
+    HexChaumPedersenProof, HexCiphertext, HexDisjunctiveRangeProof, PublicKey,
 };
 
 #[derive(CandidType, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -22,6 +22,7 @@ pub enum ElectionPhase {
 pub struct Ballot {
     pub nullifier: Vec<u8>,
     pub ciphertext: HexCiphertext,
+    pub range_proof: HexDisjunctiveRangeProof,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
@@ -40,6 +41,24 @@ pub struct ElectionDetails {
     pub start_time: u64,
     pub end_time: u64,
     pub registered_voters_count: u64,
+    pub total_ballots_cast: u64,
+    pub final_tally: Option<u64>,
+    pub proof_verified: bool,
+}
+
+/// Serialized state structure for stable memory pre_upgrade/post_upgrade persistence
+#[derive(CandidType, Deserialize, Clone, Debug)]
+pub struct StableState {
+    pub title: String,
+    pub admin: Principal,
+    pub trustee_pk_hex: String,
+    pub phase: ElectionPhase,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub registered_voters: Vec<Principal>,
+    pub used_nullifiers: Vec<Vec<u8>>,
+    pub c1_hex: String,
+    pub c2_hex: String,
     pub total_ballots_cast: u64,
     pub final_tally: Option<u64>,
     pub proof_verified: bool,
@@ -88,6 +107,54 @@ fn init() {
     STATE.with(|s| {
         let mut state = s.borrow_mut();
         state.admin = caller();
+    });
+}
+
+#[pre_upgrade]
+fn pre_upgrade() {
+    STATE.with(|s| {
+        let state = s.borrow();
+        let stable_state = StableState {
+            title: state.title.clone(),
+            admin: state.admin,
+            trustee_pk_hex: state.trustee_pk_hex.clone(),
+            phase: state.phase.clone(),
+            start_time: state.start_time,
+            end_time: state.end_time,
+            registered_voters: state.registered_voters.iter().cloned().collect(),
+            used_nullifiers: state.used_nullifiers.iter().cloned().collect(),
+            c1_hex: g1_to_hex(&state.encrypted_sum.c1),
+            c2_hex: g1_to_hex(&state.encrypted_sum.c2),
+            total_ballots_cast: state.total_ballots_cast,
+            final_tally: state.final_tally,
+            proof_verified: state.proof_verified,
+        };
+        ic_cdk::storage::stable_save((stable_state,)).expect("Failed to save state to stable storage");
+    });
+}
+
+#[post_upgrade]
+fn post_upgrade() {
+    let (stable_state,): (StableState,) =
+        ic_cdk::storage::stable_restore().expect("Failed to restore state from stable storage");
+
+    let c1 = g1_from_hex(&stable_state.c1_hex).unwrap_or_else(|_| Ciphertext::zero().c1);
+    let c2 = g1_from_hex(&stable_state.c2_hex).unwrap_or_else(|_| Ciphertext::zero().c2);
+
+    STATE.with(|s| {
+        let mut state = s.borrow_mut();
+        state.title = stable_state.title;
+        state.admin = stable_state.admin;
+        state.trustee_pk_hex = stable_state.trustee_pk_hex;
+        state.phase = stable_state.phase;
+        state.start_time = stable_state.start_time;
+        state.end_time = stable_state.end_time;
+        state.registered_voters = stable_state.registered_voters.into_iter().collect();
+        state.used_nullifiers = stable_state.used_nullifiers.into_iter().collect();
+        state.encrypted_sum = Ciphertext::new(c1, c2);
+        state.total_ballots_cast = stable_state.total_ballots_cast;
+        state.final_tally = stable_state.final_tally;
+        state.proof_verified = stable_state.proof_verified;
     });
 }
 
@@ -205,18 +272,35 @@ fn cast_ballot(ballot: Ballot) -> Result<String, String> {
             return Err("Double-vote detected: nullifier has already been submitted".to_string());
         }
 
-        // 5. Verify Ciphertext Curve Validity
+        // 5. Verify Trustee Public Key Existence
+        let trustee_pk = PublicKey::from_hex(&state.trustee_pk_hex)
+            .map_err(|e| format!("Corrupt trustee PK in canister state: {}", e))?;
+
+        // 6. Verify Ciphertext Curve Validity
         let ct = ballot
             .ciphertext
             .to_ciphertext()
             .map_err(|e| format!("Invalid ciphertext points on BN254 G1: {}", e))?;
 
-        // 6. Record Nullifier & Homomorphically Add Ballot
+        // 7. Verify 1-out-of-2 Disjunctive Chaum-Pedersen Zero-Knowledge Range Proof (m in {0, 1})
+        let range_proof = ballot
+            .range_proof
+            .to_proof()
+            .map_err(|e| format!("Invalid range proof deserialization: {}", e))?;
+
+        verify_range_proof(&trustee_pk, &ct, &range_proof).map_err(|e| {
+            format!(
+                "Ballot Validity Proof Failed: Ciphertext does not encode valid vote 0 or 1 ({})",
+                e
+            )
+        })?;
+
+        // 8. Record Nullifier & Homomorphically Add Ballot
         state.used_nullifiers.insert(ballot.nullifier);
         state.encrypted_sum = state.encrypted_sum.homomorphic_add(&ct);
         state.total_ballots_cast += 1;
 
-        Ok("Ballot successfully recorded and added to homomorphic tally".to_string())
+        Ok("Ballot successfully validated with ZK Range Proof and added to homomorphic tally".to_string())
     })
 }
 

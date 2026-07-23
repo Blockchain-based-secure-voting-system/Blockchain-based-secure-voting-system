@@ -7,13 +7,13 @@ use rand::thread_rng;
 use std::str::FromStr;
 
 use voting_crypto::{
-    compute_nullifier, encrypt, fr_from_hex, fr_to_hex, generate_decryption_proof, g1_from_hex,
-    g1_to_hex, solve_discrete_log, Ciphertext, HexChaumPedersenProof, HexCiphertext, KeyPair,
-    PublicKey,
+    compute_nullifier, encrypt, fr_from_hex, fr_to_hex, generate_decryption_proof,
+    generate_range_proof, g1_from_hex, g1_to_hex, solve_discrete_log, Ciphertext,
+    HexChaumPedersenProof, HexCiphertext, HexDisjunctiveRangeProof, KeyPair, PublicKey,
 };
 
 // Types matching Canister Candid interface
-#[derive(CandidType, Deserialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum ElectionPhase {
     Setup,
     Voting,
@@ -25,6 +25,7 @@ pub enum ElectionPhase {
 pub struct Ballot {
     pub nullifier: Vec<u8>,
     pub ciphertext: HexCiphertext,
+    pub range_proof: HexDisjunctiveRangeProof,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
@@ -103,7 +104,7 @@ enum Commands {
         canister_id: String,
     },
 
-    /// Encrypt vote (0 or 1), compute nullifier, and submit ballot to canister
+    /// Encrypt vote (0 or 1), compute nullifier, generate ZK Range Proof, and submit ballot to canister
     CastVote {
         #[arg(long, default_value = "http://127.0.0.1:4943")]
         url: String,
@@ -280,18 +281,24 @@ async fn main() -> Result<()> {
             let mut rng = thread_rng();
 
             // 1. Encrypt vote into BN254 ElGamal Ciphertext
-            let (ciphertext, _r) = encrypt(&pk, vote, &mut rng);
+            let (ciphertext, r) = encrypt(&pk, vote, &mut rng);
             let hex_ct = HexCiphertext::from_ciphertext(&ciphertext);
 
-            // 2. Compute voter nullifier
+            // 2. Generate 1-out-of-2 Disjunctive Chaum-Pedersen Zero-Knowledge Range Proof
+            let range_proof = generate_range_proof(&pk, &ciphertext, vote, &r, &mut rng)
+                .context("Failed to generate ZK range proof for ballot")?;
+            let hex_range_proof = HexDisjunctiveRangeProof::from_proof(&range_proof);
+
+            // 3. Compute voter nullifier
             let nullifier = compute_nullifier(voter_secret.as_bytes(), &election_id);
 
             let ballot = Ballot {
                 nullifier: nullifier.to_vec(),
                 ciphertext: hex_ct,
+                range_proof: hex_range_proof,
             };
 
-            // 3. Submit ballot to canister
+            // 4. Submit ballot to canister
             let arg = candid::encode_one(ballot)?;
             let res_bytes = agent
                 .update(&canister_principal, "cast_ballot")
@@ -302,11 +309,12 @@ async fn main() -> Result<()> {
             let res: Result<String, String> = candid::decode_one(&res_bytes)?;
             match res {
                 Ok(msg) => {
-                    println!("Ballot Cast Successfully!");
+                    println!("Ballot Cast & Verified Successfully!");
                     println!("Nullifier (hex): {}", hex::encode(nullifier));
                     println!("Encrypted Ballot (C1, C2):");
                     println!("  C1: {}", hex_ct.c1_hex);
                     println!("  C2: {}", hex_ct.c2_hex);
+                    println!("ZK Ballot Range Proof (1-out-of-2): GENERATED & VERIFIED ON-CHAIN");
                     println!("Response: {}", msg);
                 }
                 Err(err) => eprintln!("Canister Error: {}", err),

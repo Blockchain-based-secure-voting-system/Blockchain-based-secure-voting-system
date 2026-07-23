@@ -10,9 +10,21 @@ type HexCiphertext = record {
   c2_hex: text;
 };
 
+type HexDisjunctiveRangeProof = record {
+  a0_hex: text;
+  b0_hex: text;
+  a1_hex: text;
+  b1_hex: text;
+  c0_hex: text;
+  c1_hex: text;
+  s0_hex: text;
+  s1_hex: text;
+};
+
 type Ballot = record {
   nullifier: blob;
   ciphertext: HexCiphertext;
+  range_proof: HexDisjunctiveRangeProof;
 };
 
 type EncryptedTally = record {

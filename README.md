@@ -1,6 +1,6 @@
 # Decentralized Electronic Voting System on Internet Computer Protocol (ICP)
 
-A production-quality, privacy-preserving, zero-knowledge electronic voting system built on the **Internet Computer Protocol (ICP)** using Rust, Candid, **BN254 ElGamal Homomorphic Encryption**, per-voter nullifiers, and **Chaum-Pedersen Zero-Knowledge Proofs (NIZK DLEQ)**.
+A production-quality, privacy-preserving, zero-knowledge electronic voting system built on the **Internet Computer Protocol (ICP)** using Rust, Candid, **BN254 ElGamal Homomorphic Encryption**, per-voter nullifiers, **1-out-of-2 Disjunctive Chaum-Pedersen Ballot Range Proofs**, and **Chaum-Pedersen Decryption Zero-Knowledge Proofs (NIZK DLEQ)**.
 
 ---
 
@@ -11,6 +11,7 @@ A production-quality, privacy-preserving, zero-knowledge electronic voting syste
                                   |                  RUST CLI CLIENT                      |
                                   |  - ElGamal KeyGen (Trustee sk / PK on BN254)          |
                                   |  - Vote Encryption: C = (r*G, r*PK + m*G)             |
+                                  |  - ZK Range Proof: 1-out-of-2 Disjunctive (m in {0,1})|
                                   |  - Nullifier: Keccak256(secret || election_id)        |
                                   |  - Tally Decryption: Baby-Step Giant-Step (BSGS)      |
                                   |  - ZK Proof: Chaum-Pedersen DLEQ via Fiat-Shamir      |
@@ -24,13 +25,15 @@ A production-quality, privacy-preserving, zero-knowledge electronic voting syste
 |  Lifecycle Phases: Setup -------------------> Voting -------------------> Tallying -------------------> Complete   |
 |                    (Register Voters)        (Cast Ballots)              (Submit ZK Proof)           (Final Results) |
 |                                                                                                                   |
-|  State Machine & Security Checks:                                                                                 |
+|  State Machine & Security Enforcement:                                                                            |
 |   1. Phase & Timestamp Validation                                                                                 |
 |   2. Caller Principal Eligibility (Internet Identity)                                                             |
 |   3. Nullifier Uniqueness Check (Prevents Double-Voting)                                                          |
 |   4. BN254 G1 Curve-Membership Point Validation                                                                   |
-|   5. Homomorphic Tally Accumulation: C_sum = sum(C_i)                                                            |
-|   6. On-Chain Chaum-Pedersen ZK Decryption Proof Verification                                                    |
+|   5. 1-out-of-2 Disjunctive Chaum-Pedersen ZK Range Proof Verification (Ensures m in {0,1})                       |
+|   6. Homomorphic Tally Accumulation: C_sum = sum(C_i)                                                            |
+|   7. On-Chain Chaum-Pedersen ZK Decryption Proof Verification                                                    |
+|   8. Pre/Post-Upgrade Hooks for ICP Stable Memory Persistence                                                     |
 +-------------------------------------------------------------------------------------------------------------------+
 ```
 
@@ -46,38 +49,40 @@ A production-quality, privacy-preserving, zero-knowledge electronic voting syste
 ### 2. Homomorphic Exponential ElGamal Encryption
 - **Trustee Keypair**: Secret key $sk \xleftarrow{\$} \mathbb{F}_q$, Public Key $PK = sk \cdot G \in \mathbb{G}_1$.
 - **Ballot Encryption**: For vote scalar $m \in \{0, 1\}$ and fresh randomness $r \xleftarrow{\$} \mathbb{F}_q$:
-  $$C = (C_1, C_2) = (r \cdot G, \, r \cdot PK + m \cdot G)$$
+  $$C = (C_1, C_2) = (r \cdot G, \; r \cdot PK + m \cdot G)$$
 - **Homomorphic Addition**: Given $N$ ciphertexts $C^{(i)} = (C_1^{(i)}, C_2^{(i)})$:
   $$C_{\text{sum}} = (C_{1,\text{sum}}, C_{2,\text{sum}}) = \left( \sum_{i=1}^N C_1^{(i)}, \; \sum_{i=1}^N C_2^{(i)} \right) = \left( \left(\sum r_i\right) \cdot G, \; \left(\sum r_i\right) \cdot PK + \left(\sum m_i\right) \cdot G \right)$$
 - **Decryption**: Trustee computes decryption factor $W = sk \cdot C_{1,\text{sum}}$, then subtracts $W$ from $C_{2,\text{sum}}$:
   $$D = C_{2,\text{sum}} - W = \left(\sum m_i\right) \cdot G = M_{\text{total}} \cdot G$$
 - **Discrete Log Solver**: $M_{\text{total}}$ is recovered from $D = M_{\text{total}} \cdot G$ using the **Baby-Step Giant-Step (BSGS)** algorithm in $O(\sqrt{M})$ time.
 
-### 3. Chaum-Pedersen Zero-Knowledge Decryption Proof (NIZK DLEQ)
-To convince the canister and voters that $M_{\text{total}}$ is the true tally without revealing $sk$:
-- **Statement**: Trustee proves knowledge of $sk$ such that $PK = sk \cdot G$ and $W = sk \cdot C_{1,\text{sum}}$.
-- **Commitment**: Prover selects random nonce $k \xleftarrow{\$} \mathbb{F}_q$ and computes $A = k \cdot G$, $B = k \cdot C_{1,\text{sum}}$.
-- **Fiat-Shamir Challenge**:
-  $$c = \text{Keccak256}(\text{"CHAUM\_PEDERSEN\_BN254\_V1"} \parallel G \parallel PK \parallel C_{1,\text{sum}} \parallel W \parallel A \parallel B) \pmod q$$
-- **Response**: $s = k + c \cdot sk \pmod q$.
+### 3. 1-out-of-2 Disjunctive Chaum-Pedersen Range Proof (Ballot Validity)
+To prevent malicious voters from encrypting out-of-range scalars ($m > 1$ or negative values):
+- **Statement**: Prove that $m \in \{0, 1\}$ for ciphertext $C = (r \cdot G, r \cdot PK + m \cdot G)$ without revealing $m$.
+- **Branch 0 ($m=0$)**: $(C_1, C_2) = (r \cdot G, r \cdot PK)$
+- **Branch 1 ($m=1$)**: $(C_1, C_2 - G) = (r \cdot G, r \cdot PK)$
+- **Fiat-Shamir Joint Challenge**:
+  $$c = \text{Keccak256}(\text{"DISJUNCTIVE_RANGE_PROOF_BN254_V1"} \parallel G \parallel PK \parallel C_1 \parallel C_2 \parallel a_0 \parallel b_0 \parallel a_1 \parallel b_1) \pmod q$$
 - **Verification Equations (On-Chain Canister)**:
-  $$s \cdot G \stackrel{?}{=} A + c \cdot PK$$
-  $$s \cdot C_{1,\text{sum}} \stackrel{?}{=} B + c \cdot W$$
-  $$C_{2,\text{sum}} - W \stackrel{?}{=} M_{\text{total}} \cdot G$$
+  $$c_0 + c_1 \stackrel{?}{=} c, \qquad s_0 \cdot G \stackrel{?}{=} a_0 + c_0 \cdot C_1, \qquad s_0 \cdot PK \stackrel{?}{=} b_0 + c_0 \cdot C_2$$
+  $$s_1 \cdot G \stackrel{?}{=} a_1 + c_1 \cdot C_1, \qquad s_1 \cdot PK \stackrel{?}{=} b_1 + c_1 \cdot (C_2 - G)$$
 
-### 4. Nullifier & Double-Voting Prevention
+### 4. Chaum-Pedersen Zero-Knowledge Decryption Proof (NIZK DLEQ)
+- **Statement**: Trustee proves knowledge of $sk$ such that $PK = sk \cdot G$ and $W = sk \cdot C_{1,\text{sum}}$.
+- **Commitment**: $A = k \cdot G$, $B = k \cdot C_{1,\text{sum}}$.
+- **Fiat-Shamir Challenge**:
+  $$c = \text{Keccak256}(\text{"CHAUM_PEDERSEN_BN254_V1"} \parallel G \parallel PK \parallel C_{1,\text{sum}} \parallel W \parallel A \parallel B) \pmod q$$
+- **Verification Equations (On-Chain Canister)**:
+  $$s \cdot G \stackrel{?}{=} A + c \cdot PK, \qquad s \cdot C_{1,\text{sum}} \stackrel{?}{=} B + c \cdot W, \qquad C_{2,\text{sum}} - W \stackrel{?}{=} M_{\text{total}} \cdot G$$
+
+### 5. Nullifier & Double-Voting Prevention
 - Each ballot includes a deterministic 32-byte nullifier:
-  $$\text{nullifier} = \text{Keccak256}(\text{"VOTING\_NULLIFIER\_V1"} \parallel \text{voter\_secret} \parallel \text{election\_id})$$
-- The canister records every submitted nullifier in stable state (`BTreeSet<[u8; 32]>`). Subsequent ballot submissions containing a used nullifier are rejected immediately with `Double-vote detected`.
+  $$\text{nullifier} = \text{Keccak256}(\text{"VOTING_NULLIFIER_V1"} \parallel \text{voter_secret} \parallel \text{election_id})$$
+- Recorded in canister stable memory (`BTreeSet<[u8; 32]>`). Replayed nullifiers are rejected with `Double-vote detected`.
 
 ---
 
 ## 🛠️ Prerequisites & Installation
-
-### Requirements
-- **Rust Toolchain**: 1.75+ (installed via `rustup`).
-- **WebAssembly Target**: `wasm32-unknown-unknown`.
-- **Internet Computer SDK**: `dfx` (v0.15+).
 
 ```bash
 # Add Wasm target
@@ -92,18 +97,10 @@ rustup target add wasm32-unknown-unknown
 ```bash
 cargo test --workspace
 ```
-This tests:
-- ElGamal keygen, encryption, and homomorphic addition.
-- BSGS discrete log solver for bounded tally bounds.
-- Chaum-Pedersen zero-knowledge proof generation and tampering detection.
-- Nullifier determinism and uniqueness.
 
 ### 2. Build Wasm Canister & CLI Binary
 ```bash
-# Build ICP canister Wasm
 cargo build --package canister --target wasm32-unknown-unknown --release
-
-# Build CLI binary
 cargo build --package cli --release
 ```
 
@@ -111,117 +108,52 @@ cargo build --package cli --release
 
 ## 💻 Local ICP Deployment & Mock Election Walkthrough
 
-### 1. Start Local ICP Replica
 ```bash
+# 1. Start Local Replica
 dfx start --background --clean
-```
 
-### 2. Deploy Canister
-```bash
+# 2. Deploy Canister
 dfx deploy
-```
-*Note the generated Canister ID (e.g., `bkyz2-fmaaa-aaaaa-qaaaq-cai`).*
 
-### 3. End-to-End Election Execution via CLI
-
-#### Step 1: Trustee Key Generation
-```bash
+# 3. Generate Trustee Keys
 cargo run -p cli -- keygen
-```
-*Output:*
-```text
-=== ElGamal KeyPair Generated (BN254 Curve) ===
-Trustee Secret Key (sk): 1e2f...
-Trustee Public Key (PK): 08a4...
-```
 
-#### Step 2: Create Election (Admin)
-```bash
-cargo run -p cli -- create-election \
-  --canister-id "bkyz2-fmaaa-aaaaa-qaaaq-cai" \
-  --title "2026 Presidential Referendum" \
-  --trustee-pk "<TRUSTEE_PK_HEX>"
-```
+# 4. Create Election
+cargo run -p cli -- create-election --canister-id "<CANISTER_ID>" --title "2026 Referendum" --trustee-pk "<TRUSTEE_PK>"
 
-#### Step 3: Register Voters (Admin)
-```bash
-cargo run -p cli -- register-voters \
-  --canister-id "bkyz2-fmaaa-aaaaa-qaaaq-cai" \
-  --voters "2vxsx-fae,anonymous"
-```
+# 5. Register Voters
+cargo run -p cli -- register-voters --canister-id "<CANISTER_ID>" --voters "2vxsx-fae,anonymous"
 
-#### Step 4: Open Voting (Admin)
-```bash
-cargo run -p cli -- open-voting \
-  --canister-id "bkyz2-fmaaa-aaaaa-qaaaq-cai"
-```
+# 6. Open Voting
+cargo run -p cli -- open-voting --canister-id "<CANISTER_ID>"
 
-#### Step 5: Cast Encrypted Ballots (Voters)
-```bash
-# Voter 1 votes YES (1)
-cargo run -p cli -- cast-vote \
-  --canister-id "bkyz2-fmaaa-aaaaa-qaaaq-cai" \
-  --trustee-pk "<TRUSTEE_PK_HEX>" \
-  --voter-secret "voter_1_secret_passphrase" \
-  --election-id "2026_referendum" \
-  --vote 1
+# 7. Cast Encrypted Ballots (Generates & Verifies ZK Range Proof On-Chain)
+cargo run -p cli -- cast-vote --canister-id "<CANISTER_ID>" --trustee-pk "<TRUSTEE_PK>" --voter-secret "secret_1" --election-id "ref_2026" --vote 1
 
-# Voter 2 votes YES (1)
-cargo run -p cli -- cast-vote \
-  --canister-id "bkyz2-fmaaa-aaaaa-qaaaq-cai" \
-  --trustee-pk "<TRUSTEE_PK_HEX>" \
-  --voter-secret "voter_2_secret_passphrase" \
-  --election-id "2026_referendum" \
-  --vote 1
-```
+# 8. Close Voting
+cargo run -p cli -- close-voting --canister-id "<CANISTER_ID>"
 
-#### Step 6: Close Voting (Admin)
-```bash
-cargo run -p cli -- close-voting \
-  --canister-id "bkyz2-fmaaa-aaaaa-qaaaq-cai"
-```
-
-#### Step 7: Decrypt Tally & Submit ZK Proof (Trustee)
-```bash
-cargo run -p cli -- tally-decrypt-and-prove \
-  --canister-id "bkyz2-fmaaa-aaaaa-qaaaq-cai" \
-  --trustee-sk "<TRUSTEE_SK_HEX>"
-```
-*Output:*
-```text
-Fetched Encrypted Tally Sum:
-  Total Ballots Cast: 2
-Solving discrete log M * G = D using BSGS algorithm...
-Decrypted Raw Tally Result: 2 YES votes out of 2 total ballots
-Generating Chaum-Pedersen Zero-Knowledge Proof of Decryption...
-
-=======================================================
-ELECTION TALLY VERIFIED AND FINALIZED ON-CHAIN!
-Verified Tally Result: 2
-Zero-Knowledge Decryption Proof: VALIDATED BY CANISTER
-=======================================================
+# 9. Trustee Tally Decryption & ZK Proof Submission
+cargo run -p cli -- tally-decrypt-and-prove --canister-id "<CANISTER_ID>" --trustee-sk "<TRUSTEE_SK>"
 ```
 
 ---
 
-## ⚠️ Security Limitations & Architectural Constraints
+## ⚠️ Security Limitations & Architectural Roadmap
 
-> [!CAUTION]
-> This system is designed with rigorous cryptographic primitives, but developers and reviewers must be aware of the following known limitations:
+1. **Ballot Range Validation [RESOLVED IN v0.2.0]**:
+   - Every ballot is now verified on-chain via a **1-out-of-2 Disjunctive Chaum-Pedersen Zero-Knowledge Range Proof**. Ballots not strictly encoding 0 or 1 are rejected.
 
-1. **Single Trustee Weak Point (Key Management)**:
-   - *Current Implementation*: The secret key $sk$ is generated and held by a single trustee. If this trustee key is lost, tally decryption is impossible; if compromised, privacy of individual ballots is lost.
-   - *Recommended Follow-Up*: Transition to a Distributed Key Generation (DKG) threshold ElGamal scheme, or integrate ICP's native threshold key derivation (`vetKeys`) once API stability is verified against up-to-date ICP documentation.
+2. **Trustee Key Custody (Single Trustee vs. Threshold ElGamal / vetKeys)**:
+   - *Current Implementation*: Single trustee keypair.
+   - *Interim Threshold Design*: $n$ trustees maintain key shares $sk_i$, generating joint public key $PK_{\text{joint}} = \sum PK_i$. Decryption combines partial decryptions $W_i = sk_i \cdot C_{1,\text{sum}}$, each proven via Chaum-Pedersen DLEQ.
+   - *vetKeys Integration Roadmap*: ICP native `vetKeys` (threshold key derivation) integration is planned as system APIs finalize.
 
-2. **Absence of Ballot Range Proofs**:
-   - *Current Implementation*: A honest voter encrypts $m \in \{0, 1\}$. However, the canister currently does not verify a Zero-Knowledge Range Proof (e.g. 1-out-of-2 Disjunctive Chaum-Pedersen Proof or Bulletproofs) that a submitted ciphertext encodes strictly 0 or 1.
-   - *Security Risk*: A malicious voter could encrypt $m = 100$ or a negative scalar to skew the homomorphic tally.
+3. **Coercion & Vote-Selling [OUT OF SCOPE]**:
+   - System does not prevent coercion. A voter can prove their vote by revealing randomness $r$.
 
-3. **Coercion & Vote-Selling**:
-   - *Current Implementation*: The system does not provide coercion resistance. A voter can prove to a third party how they voted by revealing their encryption randomness $r$.
-
-4. **Client-Side Device Compromise**:
-   - *Out of Scope*: Malware on a voter's machine can alter the intended vote prior to encryption. No blockchain or smart contract mechanism can prevent client-side device compromise.
+4. **Client-Side Device Compromise [OUT OF SCOPE]**:
+   - Malware on a voter's machine altering votes before encryption cannot be solved on-chain.
 
 5. **Cryptographic Randomness**:
-   - Client-side encryption and ZK proof generation rely strictly on `rand::thread_rng()` / OS CSPRNG. Never replace this with deterministic or pseudo-random seeds.
+   - Client-side encryption relies on OS CSPRNG (`rand::thread_rng()`).

@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 use voting_crypto::{
     compute_nullifier, encrypt, fr_from_hex, fr_to_hex, generate_decryption_proof,
-    generate_range_proof, g1_from_hex, g1_to_hex, solve_discrete_log, Ciphertext,
+    generate_range_proof, g1_from_hex, solve_discrete_log, Ciphertext,
     HexChaumPedersenProof, HexCiphertext, HexDisjunctiveRangeProof, KeyPair, PublicKey,
 };
 
@@ -294,7 +294,7 @@ async fn main() -> Result<()> {
 
             let ballot = Ballot {
                 nullifier: nullifier.to_vec(),
-                ciphertext: hex_ct,
+                ciphertext: hex_ct.clone(),
                 range_proof: hex_range_proof,
             };
 

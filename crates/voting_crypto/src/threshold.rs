@@ -164,6 +164,7 @@ mod tests {
     use super::*;
     use crate::bsgs::solve_discrete_log;
     use crate::elgamal::encrypt;
+    use crate::proof::{generate_decryption_proof, verify_decryption_proof};
     use rand::thread_rng;
 
     #[test]
@@ -237,5 +238,59 @@ mod tests {
         let tally = solve_discrete_log(&decrypted_point, 100).unwrap();
 
         assert_eq!(tally, 2, "Threshold partial decryption must recover exact vote count");
+    }
+
+    #[test]
+    fn test_threshold_fewer_than_n_shares_fails() {
+        let mut rng = thread_rng();
+        let threshold = 3;
+        let total_shares = 5;
+
+        let threshold_kp = generate_threshold_keypair(threshold, total_shares, &mut rng).unwrap();
+        let master_sk = threshold_kp.master_keypair.sk;
+
+        // Only 2 shares provided for a 3-of-5 threshold
+        let insufficient_shares = vec![
+            threshold_kp.shares[0].clone(), // Trustee 1
+            threshold_kp.shares[1].clone(), // Trustee 2
+        ];
+
+        let reconstructed_sk = combine_shares(&insufficient_shares).unwrap();
+
+        // Reconstructed sk MUST NOT equal master secret key
+        assert_ne!(
+            master_sk, reconstructed_sk,
+            "Reconstruct with fewer than threshold shares MUST NOT yield master secret key"
+        );
+    }
+
+    #[test]
+    fn test_threshold_invalid_share_fails_reconstruction() {
+        let mut rng = thread_rng();
+        let threshold = 3;
+        let total_shares = 5;
+
+        let threshold_kp = generate_threshold_keypair(threshold, total_shares, &mut rng).unwrap();
+        let (ct, _) = encrypt(&threshold_kp.master_keypair.pk, 1, &mut rng);
+
+        // Tamper with Trustee 3's key share
+        let mut tampered_shares = vec![
+            threshold_kp.shares[0].clone(),
+            threshold_kp.shares[2].clone(),
+            threshold_kp.shares[4].clone(),
+        ];
+        tampered_shares[1].share += Fr::from(100u64); // Modify share scalar
+
+        let tampered_sk = combine_shares(&tampered_shares).unwrap();
+        let tampered_kp = KeyPair::from_sk(tampered_sk);
+
+        // Proof generated with tampered secret key MUST fail verification against master PK
+        let proof = generate_decryption_proof(&tampered_sk, &tampered_kp.pk, &ct, 1, &mut rng);
+
+        let verification_res = verify_decryption_proof(&threshold_kp.master_keypair.pk, &ct, &proof);
+        assert!(
+            verification_res.is_err(),
+            "Proof produced with tampered share MUST fail verification against master PK"
+        );
     }
 }

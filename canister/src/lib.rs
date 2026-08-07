@@ -405,7 +405,74 @@ ic_cdk::export_candid!();
 mod tests {
     use super::*;
     use rand::thread_rng;
-    use voting_crypto::{encrypt, generate_range_proof, compute_nullifier, KeyPair};
+    use voting_crypto::{
+        combine_shares, compute_nullifier, encrypt, generate_decryption_proof,
+        generate_range_proof, generate_threshold_keypair, KeyPair,
+    };
+
+    #[test]
+    fn test_canister_accepts_threshold_decryption_proof() {
+        let mut rng = thread_rng();
+
+        // 1. Generate 3-of-5 threshold trustee keypair
+        let threshold_kp = generate_threshold_keypair(3, 5, &mut rng).unwrap();
+        let master_pk_hex = threshold_kp.master_keypair.pk.to_hex();
+
+        // Initialize election with threshold master public key
+        assert!(create_election("Threshold Election".to_string(), master_pk_hex, 100, 200).is_ok());
+        assert!(register_voters(vec![Principal::anonymous()]).is_ok());
+        assert!(open_voting().is_ok());
+
+        // Cast 2 YES votes (1) and 1 NO vote (0) -> Expected Tally = 2
+        let (ct1, r1) = encrypt(&threshold_kp.master_keypair.pk, 1, &mut rng);
+        let rp1 = generate_range_proof(&threshold_kp.master_keypair.pk, &ct1, 1, &r1, &mut rng).unwrap();
+        let b1 = Ballot {
+            nullifier: compute_nullifier(b"sec1", "e1").to_vec(),
+            ciphertext: HexCiphertext::from_ciphertext(&ct1),
+            range_proof: HexDisjunctiveRangeProof::from_proof(&rp1),
+        };
+        assert!(cast_ballot(b1).is_ok());
+
+        let (ct2, r2) = encrypt(&threshold_kp.master_keypair.pk, 1, &mut rng);
+        let rp2 = generate_range_proof(&threshold_kp.master_keypair.pk, &ct2, 1, &r2, &mut rng).unwrap();
+        let b2 = Ballot {
+            nullifier: compute_nullifier(b"sec2", "e1").to_vec(),
+            ciphertext: HexCiphertext::from_ciphertext(&ct2),
+            range_proof: HexDisjunctiveRangeProof::from_proof(&rp2),
+        };
+        assert!(cast_ballot(b2).is_ok());
+
+        // Close voting -> Tallying phase
+        assert!(close_voting().is_ok());
+
+        // 2. Reconstruct key using 3 out of 5 shares (e.g. shares 1, 3, 5)
+        let active_shares = vec![
+            threshold_kp.shares[0].clone(),
+            threshold_kp.shares[2].clone(),
+            threshold_kp.shares[4].clone(),
+        ];
+        let reconstructed_sk = combine_shares(&active_shares).unwrap();
+        let reconstructed_kp = KeyPair::from_sk(reconstructed_sk);
+
+        // Fetch stored homomorphic sum from canister state
+        let state_ct = STATE.with(|s| s.borrow().encrypted_sum.clone());
+
+        // Generate Chaum-Pedersen decryption proof using reconstructed secret key
+        let proof = generate_decryption_proof(
+            &reconstructed_sk,
+            &reconstructed_kp.pk,
+            &state_ct,
+            2,
+            &mut rng,
+        );
+        let hex_proof = HexChaumPedersenProof::from_proof(&proof);
+
+        // Submit proof to canister submit_decryption_proof
+        let res = submit_decryption_proof(hex_proof);
+        assert!(res.is_ok(), "Canister MUST accept threshold decryption proof: {:?}", res);
+        assert_eq!(res.unwrap(), 2);
+        assert!(get_election_details().proof_verified);
+    }
 
     #[test]
     fn test_canister_election_lifecycle_and_phase_guards() {

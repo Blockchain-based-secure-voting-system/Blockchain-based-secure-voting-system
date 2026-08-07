@@ -72,7 +72,7 @@ enum Commands {
         total_shares: u64,
     },
 
-    /// Combine n threshold key shares to reconstruct master secret key
+    /// Emergency Key Recovery: Combine n threshold key shares to reconstruct master secret key
     CombineThresholdShares {
         #[arg(long, value_delimiter = ',')]
         shares: Vec<String>,
@@ -248,6 +248,10 @@ async fn main() -> Result<()> {
         }
 
         Commands::CombineThresholdShares { shares } => {
+            eprintln!("[SECURITY WARNING]: 'combine-threshold-shares' reconstructs the master secret key sk in single-process memory.");
+            eprintln!("[SECURITY WARNING]: This creates a single point of key compromise. Use ONLY for emergency recovery scenarios.");
+            eprintln!("[SECURITY WARNING]: For standard threshold election tally decryption, use 'tally-decrypt-threshold-and-prove'.\n");
+
             let parsed_shares: Result<Vec<voting_crypto::KeyShare>, _> = shares
                 .iter()
                 .map(|s| {

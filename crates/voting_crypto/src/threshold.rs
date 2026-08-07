@@ -1,11 +1,11 @@
 use ark_bn254::{Fr, G1Projective};
 use ark_ec::Group;
-use ark_ff::{Field, PrimeField, UniformRand};
+use ark_ff::{Field, UniformRand};
 use candid::CandidType;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::elgamal::{Ciphertext, KeyPair, PublicKey};
+use crate::elgamal::KeyPair;
 use crate::serde_utils::{fr_from_hex, fr_to_hex};
 use crate::CryptoError;
 

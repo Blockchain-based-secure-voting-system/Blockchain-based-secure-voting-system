@@ -44,3 +44,44 @@ jobs:
       # Canister only — mio/tokio-based crates (cli) must never be built against wasm32-unknown-unknown
       - name: Run Cargo Clippy (Wasm Canister)
         run: cargo clippy --package canister --target wasm32-unknown-unknown -- -D warnings
+
+  integration:
+    name: Run Live Replica Integration Tests (DFX)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install DFX (Internet Computer SDK)
+        run: |
+          DFX_VERSION=0.20.1 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+          echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+          echo "/usr/local/bin" >> $GITHUB_PATH
+
+      - name: Start DFX Local Replica & Deploy Canister
+        run: |
+          export PATH="$HOME/.local/share/dfx/bin:/usr/local/bin:$PATH"
+          dfx start --background --clean
+          dfx canister create canister
+          cargo build --package canister --target wasm32-unknown-unknown --release
+          dfx deploy canister
+
+      - name: Run End-to-End Live Canister Integration Test Suite
+        run: |
+          export PATH="$HOME/.local/share/dfx/bin:/usr/local/bin:$PATH"
+          chmod +x scripts/integration_test.sh
+          ./scripts/integration_test.sh

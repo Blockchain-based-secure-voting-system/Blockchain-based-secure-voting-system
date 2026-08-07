@@ -381,6 +381,7 @@ name = "canister"
 version = "0.1.0"
 dependencies = [
  "candid",
+ "getrandom",
  "hex",
  "ic-cdk",
  "serde",
@@ -2345,6 +2346,8 @@ dependencies = [
  "ark-ff",
  "ark-serialize",
  "ark-std",
+ "candid",
+ "getrandom",
  "hex",
  "rand",
  "serde",

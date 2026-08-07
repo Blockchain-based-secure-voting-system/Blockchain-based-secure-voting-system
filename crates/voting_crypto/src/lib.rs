@@ -5,6 +5,7 @@ pub mod nullifier;
 pub mod proof;
 pub mod range_proof;
 pub mod serde_utils;
+pub mod threshold;
 
 pub use bsgs::solve_discrete_log;
 pub use elgamal::{
@@ -21,3 +22,7 @@ pub use range_proof::{
     DisjunctiveRangeProof, HexDisjunctiveRangeProof,
 };
 pub use serde_utils::*;
+pub use threshold::{
+    combine_partial_decryptions, combine_shares, generate_threshold_keypair, split_secret_key,
+    HexKeyShare, KeyShare, ThresholdKeyPair,
+};

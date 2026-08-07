@@ -7,9 +7,10 @@ use rand::thread_rng;
 use std::str::FromStr;
 
 use voting_crypto::{
-    compute_nullifier, encrypt, fr_from_hex, fr_to_hex, generate_decryption_proof,
-    generate_range_proof, g1_from_hex, solve_discrete_log, Ciphertext,
-    HexChaumPedersenProof, HexCiphertext, HexDisjunctiveRangeProof, KeyPair, PublicKey,
+    combine_shares, compute_nullifier, encrypt, fr_from_hex, fr_to_hex,
+    generate_decryption_proof, generate_range_proof, generate_threshold_keypair,
+    g1_from_hex, solve_discrete_log, Ciphertext, HexChaumPedersenProof, HexCiphertext,
+    HexDisjunctiveRangeProof, HexKeyShare, KeyPair, PublicKey,
 };
 
 // Types matching Canister Candid interface
@@ -59,8 +60,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Generate a new Trustee ElGamal KeyPair over BN254 G1
+    /// Generate a new Single-Trustee ElGamal KeyPair over BN254 G1
     Keygen,
+
+    /// Trusted Dealer Setup: Generate n-of-m Shamir Threshold Key Shares
+    KeygenThreshold {
+        #[arg(long, default_value = "3")]
+        threshold: u64,
+
+        #[arg(long, default_value = "5")]
+        total_shares: u64,
+    },
+
+    /// Combine n threshold key shares to reconstruct master secret key
+    CombineThresholdShares {
+        #[arg(long, value_delimiter = ',')]
+        shares: Vec<String>,
+    },
 
     /// Create and initialize an election on the ICP canister
     CreateElection {
@@ -134,7 +150,7 @@ enum Commands {
         canister_id: String,
     },
 
-    /// Trustee: fetch encrypted tally, decrypt via BSGS, generate Chaum-Pedersen ZK proof, and submit to canister
+    /// Single Trustee: fetch encrypted tally, decrypt via BSGS, generate Chaum-Pedersen ZK proof, and submit to canister
     TallyDecryptAndProve {
         #[arg(long, default_value = "http://127.0.0.1:4943")]
         url: String,
@@ -144,6 +160,21 @@ enum Commands {
 
         #[arg(long)]
         trustee_sk: String,
+
+        #[arg(long, default_value = "1000000")]
+        max_bound: u64,
+    },
+
+    /// Threshold Trustees: decrypt tally using n-of-m threshold key shares, generate Chaum-Pedersen ZK proof, and submit to canister
+    TallyDecryptThresholdAndProve {
+        #[arg(long, default_value = "http://127.0.0.1:4943")]
+        url: String,
+
+        #[arg(long)]
+        canister_id: String,
+
+        #[arg(long, value_delimiter = ',')]
+        shares: Vec<String>,
 
         #[arg(long, default_value = "1000000")]
         max_bound: u64,
@@ -192,6 +223,55 @@ async fn main() -> Result<()> {
             println!("Trustee Secret Key (sk): {}", sk_hex);
             println!("Trustee Public Key (PK): {}", pk_hex);
             println!("\n[SECURITY WARNING]: Store trustee secret key in a secure vault. Never share sk.");
+        }
+
+        Commands::KeygenThreshold {
+            threshold,
+            total_shares,
+        } => {
+            let mut rng = thread_rng();
+            let tkp = generate_threshold_keypair(threshold, total_shares, &mut rng)
+                .context("Failed to generate threshold keypair")?;
+
+            println!("=== n-of-m Threshold ElGamal Setup (Shamir Secret Sharing) ===");
+            println!("Threshold (n): {}", tkp.threshold);
+            println!("Total Shares (m): {}", tkp.total_shares);
+            println!("Master Public Key (PK): {}", tkp.master_keypair.pk.to_hex());
+            println!("\n[TRUSTED DEALER SETUP NOTICE]: Distribute each key share below to its corresponding trustee.");
+            for share in &tkp.shares {
+                let hex_share = HexKeyShare::from_share(share);
+                println!(
+                    "  Trustee Share #{}: {}:{}",
+                    hex_share.index, hex_share.index, hex_share.share_hex
+                );
+            }
+        }
+
+        Commands::CombineThresholdShares { shares } => {
+            let parsed_shares: Result<Vec<voting_crypto::KeyShare>, _> = shares
+                .iter()
+                .map(|s| {
+                    let parts: Vec<&str> = s.split(':').collect();
+                    if parts.len() != 2 {
+                        return Err(anyhow!("Share must be in format index:hex_string (e.g. 1:0x1234)"));
+                    }
+                    let index: u64 = parts[0].parse().context("Invalid share index")?;
+                    let share_fr = fr_from_hex(parts[1]).context("Invalid share scalar hex")?;
+                    Ok(voting_crypto::KeyShare {
+                        index,
+                        share: share_fr,
+                    })
+                })
+                .collect();
+
+            let parsed_shares = parsed_shares?;
+            let reconstructed_sk = combine_shares(&parsed_shares)
+                .context("Failed to combine threshold shares")?;
+            let keypair = KeyPair::from_sk(reconstructed_sk);
+
+            println!("=== Reconstructed Secret Key from {} Shares ===", parsed_shares.len());
+            println!("Reconstructed Secret Key (sk): {}", fr_to_hex(&reconstructed_sk));
+            println!("Derived Public Key (PK): {}", keypair.pk.to_hex());
         }
 
         Commands::CreateElection {
@@ -399,6 +479,80 @@ async fn main() -> Result<()> {
                 Ok(verified_tally) => {
                     println!("\n=======================================================");
                     println!("ELECTION TALLY VERIFIED AND FINALIZED ON-CHAIN!");
+                    println!("Verified Tally Result: {}", verified_tally);
+                    println!("Zero-Knowledge Decryption Proof: VALIDATED BY CANISTER");
+                    println!("=======================================================");
+                }
+                Err(err) => eprintln!("Canister Proof Rejection Error: {}", err),
+            }
+        }
+
+        Commands::TallyDecryptThresholdAndProve {
+            url,
+            canister_id,
+            shares,
+            max_bound,
+        } => {
+            let agent = build_agent(&url).await?;
+            let canister_principal = Principal::from_text(&canister_id)?;
+
+            let parsed_shares: Result<Vec<voting_crypto::KeyShare>, _> = shares
+                .iter()
+                .map(|s| {
+                    let parts: Vec<&str> = s.split(':').collect();
+                    if parts.len() != 2 {
+                        return Err(anyhow!("Share must be in format index:hex_string (e.g. 1:0x1234)"));
+                    }
+                    let index: u64 = parts[0].parse().context("Invalid share index")?;
+                    let share_fr = fr_from_hex(parts[1]).context("Invalid share scalar hex")?;
+                    Ok(voting_crypto::KeyShare {
+                        index,
+                        share: share_fr,
+                    })
+                })
+                .collect();
+
+            let parsed_shares = parsed_shares?;
+            println!("Reconstructing secret key from {} threshold shares...", parsed_shares.len());
+            let sk = combine_shares(&parsed_shares).context("Failed to combine threshold key shares")?;
+            let keypair = KeyPair::from_sk(sk);
+
+            // Fetch encrypted tally
+            let query_bytes = agent
+                .query(&canister_principal, "get_encrypted_tally")
+                .with_arg(candid::encode_args(())?)
+                .call()
+                .await?;
+
+            let tally_res: Result<EncryptedTally, String> = candid::decode_one(&query_bytes)?;
+            let enc_tally = tally_res.map_err(|e| anyhow!("Failed to fetch encrypted tally: {}", e))?;
+
+            let c1_sum = g1_from_hex(&enc_tally.c1_hex)?;
+            let c2_sum = g1_from_hex(&enc_tally.c2_hex)?;
+            let encrypted_sum = Ciphertext::new(c1_sum, c2_sum);
+
+            let w = c1_sum * sk;
+            let decrypted_point = c2_sum - w;
+
+            let tally = solve_discrete_log(&decrypted_point, max_bound)
+                .context("Failed to solve discrete log for encrypted tally sum")?;
+
+            let mut rng = thread_rng();
+            let proof = generate_decryption_proof(&sk, &keypair.pk, &encrypted_sum, tally, &mut rng);
+            let hex_proof = HexChaumPedersenProof::from_proof(&proof);
+
+            let arg = candid::encode_one(hex_proof)?;
+            let res_bytes = agent
+                .update(&canister_principal, "submit_decryption_proof")
+                .with_arg(arg)
+                .call_and_wait()
+                .await?;
+
+            let res: Result<u64, String> = candid::decode_one(&res_bytes)?;
+            match res {
+                Ok(verified_tally) => {
+                    println!("\n=======================================================");
+                    println!("THRESHOLD TALLY VERIFIED AND FINALIZED ON-CHAIN!");
                     println!("Verified Tally Result: {}", verified_tally);
                     println!("Zero-Knowledge Decryption Proof: VALIDATED BY CANISTER");
                     println!("=======================================================");

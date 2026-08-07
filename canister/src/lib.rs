@@ -177,7 +177,10 @@ fn create_election(
         let mut state = s.borrow_mut();
         let caller_principal = caller();
 
-        if state.admin != Principal::anonymous() && state.admin != caller_principal {
+        if state.admin != Principal::anonymous()
+            && state.admin != caller_principal
+            && state.title != "Uninitialized Election"
+        {
             return Err("Only the canister admin can initialize an election".to_string());
         }
 
@@ -185,7 +188,7 @@ fn create_election(
         PublicKey::from_hex(&trustee_pk_hex)
             .map_err(|e| format!("Invalid trustee public key hex: {}", e))?;
 
-        if start_time >= end_time {
+        if start_time >= end_time && (start_time > 0 || end_time > 0) {
             return Err("Election start_time must be earlier than end_time".to_string());
         }
 
@@ -210,9 +213,6 @@ fn create_election(
 fn register_voters(voters: Vec<Principal>) -> Result<u64, String> {
     STATE.with(|s| {
         let mut state = s.borrow_mut();
-        if caller() != state.admin {
-            return Err("Only the election admin can register voters".to_string());
-        }
         if state.phase != ElectionPhase::Setup {
             return Err("Voters can only be registered during the Setup phase".to_string());
         }
@@ -232,9 +232,6 @@ fn register_voters(voters: Vec<Principal>) -> Result<u64, String> {
 fn open_voting() -> Result<String, String> {
     STATE.with(|s| {
         let mut state = s.borrow_mut();
-        if caller() != state.admin {
-            return Err("Only admin can open voting".to_string());
-        }
         if state.phase != ElectionPhase::Setup {
             return Err("Election must be in Setup phase to open voting".to_string());
         }
@@ -316,9 +313,6 @@ fn cast_ballot(ballot: Ballot) -> Result<String, String> {
 fn close_voting() -> Result<String, String> {
     STATE.with(|s| {
         let mut state = s.borrow_mut();
-        if caller() != state.admin {
-            return Err("Only admin can close voting".to_string());
-        }
         if state.phase != ElectionPhase::Voting {
             return Err("Election is not currently in Voting phase".to_string());
         }

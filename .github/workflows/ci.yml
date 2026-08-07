@@ -14,8 +14,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.81.0"
           targets: wasm32-unknown-unknown
           components: clippy
 
@@ -29,21 +30,21 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Fast-Fail Check (Native CLI & Crypto Crate)
-        run: cargo check --package voting_crypto --package cli --verbose
+        run: cargo check --package voting_crypto --package cli --locked --verbose
 
       - name: Run Unit Tests (Cryptographic Suite & CLI)
-        run: cargo test --package voting_crypto --package cli --verbose
+        run: cargo test --package voting_crypto --package cli --locked --verbose
 
       # Canister only — mio/tokio-based crates (cli) must never be built against wasm32-unknown-unknown
       - name: Check Canister Wasm Target Build
-        run: cargo check --package canister --target wasm32-unknown-unknown --verbose
+        run: cargo check --package canister --target wasm32-unknown-unknown --locked --verbose
 
       - name: Run Cargo Clippy (Native CLI & Crypto Crate)
-        run: cargo clippy --package voting_crypto --package cli -- -D warnings
+        run: cargo clippy --package voting_crypto --package cli --locked -- -D warnings
 
       # Canister only — mio/tokio-based crates (cli) must never be built against wasm32-unknown-unknown
       - name: Run Cargo Clippy (Wasm Canister)
-        run: cargo clippy --package canister --target wasm32-unknown-unknown -- -D warnings
+        run: cargo clippy --package canister --target wasm32-unknown-unknown --locked -- -D warnings
 
   integration:
     name: Run Live Replica Integration Tests (DFX)
@@ -53,8 +54,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.81.0"
           targets: wasm32-unknown-unknown
 
       - name: Cache Cargo Dependencies
@@ -76,7 +78,7 @@ jobs:
           export PATH="$HOME/.local/share/dfx/bin:$PATH"
           dfx start --background --clean
           dfx canister create canister
-          cargo build --package canister --target wasm32-unknown-unknown --release
+          cargo build --package canister --target wasm32-unknown-unknown --locked --release
           dfx deploy canister
 
       - name: Run End-to-End Live Canister Integration Test Suite

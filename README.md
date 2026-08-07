@@ -92,21 +92,35 @@ To prevent malicious voters from encrypting out-of-range scalars ($m > 1$ or neg
 ```bash
 # Add Wasm target
 rustup target add wasm32-unknown-unknown
+
+# Wire Git Pre-Push Hook Gate
+git config core.hooksPath .githooks
 ```
+
+*Note for Windows ARM64 Environments without MSVC `link.exe`*: The local pre-push hook detects missing native MSVC build tools and defers host binary linking verification to the pinned GitHub Actions CI workflow (`ubuntu-latest`).
 
 ---
 
 ## 🚀 Building & Testing
 
-### 1. Run Unit & Cryptographic Test Suite
+### 1. Run Pre-Push Verification Gate
 ```bash
-cargo test --package voting_crypto --package cli
+# Linux/macOS
+./scripts/pre-push-check.sh
+
+# Windows PowerShell
+.\scripts\pre-push-check.ps1
 ```
 
-### 2. Build Wasm Canister & CLI Binary
+### 2. Run Unit & Cryptographic Test Suite
 ```bash
-cargo build --package canister --target wasm32-unknown-unknown --release
-cargo build --package cli --release
+cargo test --package voting_crypto --package cli --locked
+```
+
+### 3. Build Wasm Canister & CLI Binary
+```bash
+cargo build --package canister --target wasm32-unknown-unknown --release --locked
+cargo build --package cli --release --locked
 ```
 
 ---
@@ -130,7 +144,7 @@ cargo run -p cli -- keygen-threshold --threshold 3 --total-shares 5
 cargo run -p cli -- create-election --canister-id "<CANISTER_ID>" --title "2026 Referendum" --trustee-pk "<MASTER_PK>"
 
 # 5. Register Voters
-cargo run -p cli -- register-voters --canister-id "<CANISTER_ID>" --voters "2vxsx-fae,anonymous"
+cargo run -p cli -- register-voters --canister-id "<CANISTER_ID>" --voters "2vxsx-fae"
 
 # 6. Open Voting
 cargo run -p cli -- open-voting --canister-id "<CANISTER_ID>"
@@ -154,6 +168,7 @@ cargo run -p cli -- tally-decrypt-threshold-and-prove --canister-id "<CANISTER_I
 
 2. **Trustee Key Custody [INTERIM SHAMIR THRESHOLD RESOLVED IN v0.3.0]**:
    - *Implemented Interim Scheme*: $n$-of-$m$ Shamir's Secret Sharing over scalar field $\mathbb{F}_q$. A trusted dealer setup (`cli keygen-threshold`) generates master public key $PK$ and $m$ threshold key shares. Any $n$ trustee shares can reconstruct $sk$ or combine partial decryption factors $W = \sum \lambda_i W_i = sk \cdot C_1$ via Lagrange interpolation.
+   - *Emergency Key Recovery Notice*: The `combine-threshold-shares` command reconstructs $sk$ in single-process memory. It prints a prominent security warning banner and is intended strictly for emergency dealer recovery.
    - *Security Assumption*: Key generation uses a trusted dealer setup. In production deployments, this should be replaced with a non-interactive Distributed Key Generation (DKG) protocol or ICP native `vetKeys` to eliminate the setup dealer centralization point.
 
 3. **Coercion & Vote-Selling [OUT OF SCOPE]**:

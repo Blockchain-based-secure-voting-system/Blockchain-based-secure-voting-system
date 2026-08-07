@@ -11,7 +11,7 @@ echo "[1/7] Generating 3-of-5 Threshold Trustee Keys..."
 KEYGEN_OUT=$(cargo run -q -p cli -- keygen-threshold --threshold 3 --total-shares 5)
 echo "$KEYGEN_OUT"
 
-MASTER_PK=$(echo "$KEYGEN_OUT" | grep "Master Public Key" | awk '{print $4}')
+MASTER_PK=$(echo "$KEYGEN_OUT" | grep "Master Public Key" | awk '{print $5}')
 SHARE_1=$(echo "$KEYGEN_OUT" | grep "Trustee Share #1" | awk '{print $4}')
 SHARE_3=$(echo "$KEYGEN_OUT" | grep "Trustee Share #3" | awk '{print $4}')
 SHARE_5=$(echo "$KEYGEN_OUT" | grep "Trustee Share #5" | awk '{print $4}')
@@ -27,7 +27,7 @@ cargo run -q -p cli -- create-election --canister-id "${CANISTER_ID}" --title "L
 
 # 3. Register Voters
 echo "[3/7] Registering Eligible Voters..."
-cargo run -q -p cli -- register-voters --canister-id "${CANISTER_ID}" --voters "anonymous,2vxsx-fae"
+cargo run -q -p cli -- register-voters --canister-id "${CANISTER_ID}" --voters "2vxsx-fae"
 
 # 4. Open Voting Phase
 echo "[4/7] Opening Voting Phase..."

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+chmod +x scripts/pre-push-check.sh
+./scripts/pre-push-check.sh

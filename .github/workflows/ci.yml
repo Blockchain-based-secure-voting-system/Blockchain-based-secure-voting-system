@@ -68,13 +68,12 @@ jobs:
 
       - name: Install DFX (Internet Computer SDK)
         run: |
-          DFX_VERSION=0.20.1 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+          DFXVM_INIT_YES=true DFX_VERSION=0.20.1 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
           echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
-          echo "/usr/local/bin" >> $GITHUB_PATH
 
       - name: Start DFX Local Replica & Deploy Canister
         run: |
-          export PATH="$HOME/.local/share/dfx/bin:/usr/local/bin:$PATH"
+          export PATH="$HOME/.local/share/dfx/bin:$PATH"
           dfx start --background --clean
           dfx canister create canister
           cargo build --package canister --target wasm32-unknown-unknown --release
@@ -82,6 +81,6 @@ jobs:
 
       - name: Run End-to-End Live Canister Integration Test Suite
         run: |
-          export PATH="$HOME/.local/share/dfx/bin:/usr/local/bin:$PATH"
+          export PATH="$HOME/.local/share/dfx/bin:$PATH"
           chmod +x scripts/integration_test.sh
           ./scripts/integration_test.sh

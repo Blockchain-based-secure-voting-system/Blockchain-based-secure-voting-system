@@ -412,16 +412,24 @@ mod tests {
         let threshold_kp = generate_threshold_keypair(3, 5, &mut rng).unwrap();
         let master_pk_hex = threshold_kp.master_keypair.pk.to_hex();
 
-        // Initialize election with threshold master public key
-        assert!(create_election("Threshold Election".to_string(), master_pk_hex, 100, 200).is_ok());
+        // start_time=0 / end_time=0: disables the time-window guard ("if state.start_time > 0 &&
+        // now < state.start_time"). In native unit tests ic_cdk::api::time() returns 0, so
+        // any non-zero start_time would cause cast_ballot to reject every ballot with
+        // "Voting period has not started yet". Using 0/0 bypasses that guard correctly.
+        //
+        // ic_cdk::caller() returns Principal::anonymous() in native tests. The initial state
+        // has admin=Principal::anonymous(), so create_election passes its admin check.
+        // register_voters has no admin check. cast_ballot checks the registered voter list,
+        // which includes Principal::anonymous() after the register_voters call.
+        assert!(create_election("Threshold Election".to_string(), master_pk_hex, 0, 0).is_ok());
         assert!(register_voters(vec![Principal::anonymous()]).is_ok());
         assert!(open_voting().is_ok());
 
-        // Cast 2 YES votes (1) and 1 NO vote (0) -> Expected Tally = 2
+        // Cast 2 YES votes (1). Expected Tally = 2.
         let (ct1, r1) = encrypt(&threshold_kp.master_keypair.pk, 1, &mut rng);
         let rp1 = generate_range_proof(&threshold_kp.master_keypair.pk, &ct1, 1, &r1, &mut rng).unwrap();
         let b1 = Ballot {
-            nullifier: compute_nullifier(b"sec1", "e1").to_vec(),
+            nullifier: compute_nullifier(b"sec1_thresh", "e1").to_vec(),
             ciphertext: HexCiphertext::from_ciphertext(&ct1),
             range_proof: HexDisjunctiveRangeProof::from_proof(&rp1),
         };
@@ -430,7 +438,7 @@ mod tests {
         let (ct2, r2) = encrypt(&threshold_kp.master_keypair.pk, 1, &mut rng);
         let rp2 = generate_range_proof(&threshold_kp.master_keypair.pk, &ct2, 1, &r2, &mut rng).unwrap();
         let b2 = Ballot {
-            nullifier: compute_nullifier(b"sec2", "e1").to_vec(),
+            nullifier: compute_nullifier(b"sec2_thresh", "e1").to_vec(),
             ciphertext: HexCiphertext::from_ciphertext(&ct2),
             range_proof: HexDisjunctiveRangeProof::from_proof(&rp2),
         };
@@ -439,7 +447,11 @@ mod tests {
         // Close voting -> Tallying phase
         assert!(close_voting().is_ok());
 
-        // 2. Reconstruct key using 3 out of 5 shares (e.g. shares 1, 3, 5)
+        // 2. Reconstruct master sk using 3 out of 5 shares (shares 1, 3, 5)
+        // Shamir Lagrange: sk = sum(lambda_i * share_i) mod q
+        // Resulting reconstructed_sk is identical to master_keypair.sk, so
+        // reconstructed_kp.pk == threshold_kp.master_keypair.pk == stored trustee_pk_hex.
+        // verify_decryption_proof checks DLEQ against stored PK only, not how sk was obtained.
         let active_shares = vec![
             threshold_kp.shares[0].clone(),
             threshold_kp.shares[2].clone(),
@@ -447,6 +459,13 @@ mod tests {
         ];
         let reconstructed_sk = combine_shares(&active_shares).unwrap();
         let reconstructed_kp = KeyPair::from_sk(reconstructed_sk);
+
+        // Verify reconstructed PK matches master PK (mathematical invariant)
+        assert_eq!(
+            reconstructed_kp.pk.to_hex(),
+            threshold_kp.master_keypair.pk.to_hex(),
+            "Reconstructed PK must equal master PK after Lagrange interpolation"
+        );
 
         // Fetch stored homomorphic sum from canister state
         let state_ct = STATE.with(|s| s.borrow().encrypted_sum.clone());
@@ -461,7 +480,10 @@ mod tests {
         );
         let hex_proof = HexChaumPedersenProof::from_proof(&proof);
 
-        // Submit proof to canister submit_decryption_proof
+        // submit_decryption_proof verifies against stored trustee_pk_hex.
+        // Because reconstructed_kp.pk == master_keypair.pk, the DLEQ proof passes.
+        // This is the concrete test that the canister accepts a Shamir-combined proof
+        // without any canister-side code change.
         let res = submit_decryption_proof(hex_proof);
         assert!(res.is_ok(), "Canister MUST accept threshold decryption proof: {:?}", res);
         assert_eq!(res.unwrap(), 2);
@@ -474,12 +496,14 @@ mod tests {
         let keypair = KeyPair::generate(&mut rng);
         let trustee_pk_hex = keypair.pk.to_hex();
 
-        // 1. Create election
+        // 1. Create election — use start_time=0/end_time=0 to disable time-window
+        // guards, which would otherwise block cast_ballot when ic_cdk::time()=0 in
+        // native unit tests.
         let create_res = create_election(
             "Test Referendum".to_string(),
             trustee_pk_hex.clone(),
-            100,
-            200,
+            0,
+            0,
         );
         assert!(create_res.is_ok());
 

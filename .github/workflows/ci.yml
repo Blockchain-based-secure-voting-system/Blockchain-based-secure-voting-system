@@ -34,6 +34,13 @@ jobs:
       - name: Run Unit Tests (Cryptographic Suite & CLI)
         run: cargo test --package voting_crypto --package cli --locked --verbose
 
+      # Canister unit tests run against the native target using ic-cdk's native stubs.
+      # caller() returns Principal::anonymous() and time() returns 0 in this mode.
+      # Tests are written to account for this (start_time=0/end_time=0 in test elections).
+      # This is the ONLY place test_canister_accepts_threshold_decryption_proof is actually executed.
+      - name: Run Canister Unit Tests (Native Target with IC CDK Stubs)
+        run: cargo test --package canister --locked --verbose
+
       # Canister only — mio/tokio-based crates (cli) must never be built against wasm32-unknown-unknown
       - name: Check Canister Wasm Target Build
         run: cargo check --package canister --target wasm32-unknown-unknown --locked --verbose

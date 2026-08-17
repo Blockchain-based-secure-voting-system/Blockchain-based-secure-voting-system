@@ -16,6 +16,9 @@ export default defineConfig({
   },
   // @ts-ignore
   test: {
-    include: ['tests/**/*.test.ts'],
+    globals: true,
+    environment: 'jsdom',
+    pool: 'forks',
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
   },
 });

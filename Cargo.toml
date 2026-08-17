@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/voting_crypto",
+    "crates/voting_crypto_wasm",
     "canister",
     "cli"
 ]

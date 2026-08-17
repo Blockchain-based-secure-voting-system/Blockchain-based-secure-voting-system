@@ -2,7 +2,9 @@ import { Actor, HttpAgent, ActorSubclass } from '@dfinity/agent';
 import { idlFactory } from './canister.did.js';
 import type { _SERVICE } from './canister.did.d.ts';
 
-export const canisterId = process.env.CANISTER_ID_CANISTER || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
+export const canisterId =
+  (typeof process !== 'undefined' && process?.env?.CANISTER_ID_CANISTER) ||
+  'bkyz2-fmaaa-aaaaa-qaaaq-cai';
 
 export interface CreateActorOptions {
   agentOptions?: Parameters<typeof HttpAgent.createSync>[0];

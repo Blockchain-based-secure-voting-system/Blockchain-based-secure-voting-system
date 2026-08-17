@@ -24,8 +24,8 @@ pub struct WasmDecryptionResult {
 
 #[derive(Serialize, Deserialize)]
 pub struct WasmThresholdSetup {
-    pub threshold: usize,
-    pub total_shares: usize,
+    pub threshold: u64,
+    pub total_shares: u64,
     pub master_pk_hex: String,
     pub shares: Vec<HexKeyShare>,
 }
@@ -96,8 +96,8 @@ pub fn verify_ballot_range_proof(
 
 #[wasm_bindgen]
 pub fn generate_threshold_trustee_keys(
-    threshold: usize,
-    total_shares: usize,
+    threshold: u64,
+    total_shares: u64,
 ) -> Result<JsValue, JsValue> {
     let mut rng = thread_rng();
     let tkp = generate_threshold_keypair(threshold, total_shares, &mut rng)

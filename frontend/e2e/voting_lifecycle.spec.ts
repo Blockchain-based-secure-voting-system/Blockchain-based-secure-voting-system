@@ -36,13 +36,14 @@ test.describe('ICP Zero-Knowledge Voting UI & Network Security Trace', () => {
     // 6. Navigate to Admin Portal
     await tabs.nth(2).click();
     await expect(page.locator('h2')).toHaveText('Election Administration');
-    await expect(page.getByText('Initialize Election')).toBeVisible();
+    await expect(page.getByText('Initialize Election', { exact: true })).toBeVisible();
+    await expect(page.getByText('Register Eligible Voters', { exact: true })).toBeVisible();
 
     // 7. Navigate to Trustee Key Custody Portal
     await tabs.nth(3).click();
     await expect(page.locator('h2')).toHaveText('Trustee Key Custody Portal');
-    await expect(page.getByText('Generate n-of-m Threshold Keys')).toBeVisible();
-    await expect(page.getByText('Threshold Tally Decryption')).toBeVisible();
+    await expect(page.getByText('Generate n-of-m Threshold Keys', { exact: true })).toBeVisible();
+    await expect(page.getByText('Threshold Tally Decryption', { exact: true })).toBeVisible();
 
     // 8. Assert Network Trace Security Guarantee:
     // Verify that NO captured network request body contains plaintext vote values or secrets

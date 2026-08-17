@@ -2376,6 +2376,7 @@ dependencies = [
  "ark-ec",
  "ark-ff",
  "getrandom",
+ "hex",
  "rand",
  "serde",
  "serde-wasm-bindgen",

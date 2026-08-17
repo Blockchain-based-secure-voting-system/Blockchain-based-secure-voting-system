@@ -392,7 +392,9 @@ fn has_nullifier_been_used(nullifier: Vec<u8>) -> bool {
     STATE.with(|s| s.borrow().used_nullifiers.contains(&nullifier))
 }
 
-// Generate candid interface automatically
+// export_candid!() generates a wasm-ld linker script that is only valid for the
+// wasm32-unknown-unknown target. Gate it so native `cargo test` compilation works.
+#[cfg(target_arch = "wasm32")]
 ic_cdk::export_candid!();
 
 #[cfg(test)]

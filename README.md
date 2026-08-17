@@ -123,6 +123,15 @@ cargo build --package canister --target wasm32-unknown-unknown --release --locke
 cargo build --package cli --release --locked
 ```
 
+### 4. Build & Test Web Frontend (React + Vite + TypeScript)
+```bash
+cd frontend
+npm install
+npm test        # Runs Vitest Candid & IDL interface test suite
+npm run build   # Production TypeScript & Vite bundle compilation
+npm run dev     # Start local development server on http://localhost:3000
+```
+
 ---
 
 ## 💻 Local ICP Deployment & Mock Election Walkthrough

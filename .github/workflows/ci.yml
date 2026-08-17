@@ -50,7 +50,7 @@ jobs:
         run: cargo clippy --package canister --target wasm32-unknown-unknown --locked -- -D warnings
 
   frontend:
-    name: Run Frontend Build & Unit Test Suite
+    name: Run Frontend Build, Unit & Playwright E2E Suite
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -68,11 +68,17 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Run Frontend Unit Tests
+      - name: Run Frontend Unit Tests (Vitest)
         run: npm test
 
-      - name: Build Frontend Application
+      - name: Build Frontend Application (Vite + TypeScript)
         run: npm run build
+
+      - name: Install Playwright Chromium Browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E & Network Security Trace Suite
+        run: npx playwright test
 
   integration:
     name: Run Live Replica Integration Tests (DFX)

@@ -397,6 +397,15 @@ fn has_nullifier_been_used(nullifier: Vec<u8>) -> bool {
 #[cfg(target_arch = "wasm32")]
 ic_cdk::export_candid!();
 
+// NOTE ON CANISTER UNIT TESTS & COMPILATION TARGETS:
+// Native host `cargo test --package canister` cannot link this crate because ic_cdk's
+// `#[query]` and `#[update]` macros emit wasm entry point export names (containing spaces)
+// into ELF/MSVC dynamic library version scripts, which native host linkers reject.
+//
+// The unit test logic below is maintained for semantic documentation of the state machine.
+// The true empirical verification of the canister's threshold proof acceptance, voting phase
+// guards, and stable memory state survival across upgrades is executed against a live IC replica
+// via `scripts/integration_test.sh` inside the CI `integration` job.
 #[cfg(test)]
 mod tests {
     use super::*;

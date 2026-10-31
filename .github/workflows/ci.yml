@@ -190,6 +190,8 @@ jobs:
         working-directory: frontend
         run: |
           export PATH="$HOME/.local/share/dfx/bin:$HOME/.cache/dfinity/versions/0.29.0:$PATH"
+          rm -f src/declarations/canister/index.js src/declarations/canister/index.d.ts
+          git checkout -- src/declarations/canister/index.ts
           LIVE_CANISTER_ID=$(cd .. && dfx canister id canister)
           export LIVE_CANISTER_ID
           export USE_LIVE_REPLICA=true

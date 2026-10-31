@@ -1,3 +1,5 @@
+import { CANISTER_ERROR_MAP } from '../content/errors';
+
 /**
  * Maps raw canister, network, or WebAssembly errors to safe, user-facing messages.
  * Strips stack traces, raw hex dumps of secrets, and internal state details.
@@ -17,9 +19,25 @@ export function mapToSafeErrorMessage(err: unknown, fallbackContext: string = 'O
   const firstLine = raw.split('\n')[0].trim();
   const sanitized = firstLine.replace(/(?:0x)?[0-9a-fA-F]{24,}/g, '[REDACTED_HEX]');
 
-  // Map known canister / network / crypto errors to clear, safe messages
+  // 1. Check canonical canister error vocabulary map (exact match or prefix match)
+  if (CANISTER_ERROR_MAP[firstLine]) {
+    return CANISTER_ERROR_MAP[firstLine];
+  }
+  for (const [key, mappedMessage] of Object.entries(CANISTER_ERROR_MAP)) {
+    if (firstLine.includes(key)) {
+      return mappedMessage;
+    }
+  }
+
+  // 2. Map known network / replica / Wasm errors to clear, safe messages
   if (/fetch|network|ECONNREFUSED|ERR_CONNECTION_REFUSED|Failed to fetch|unreachable/i.test(firstLine)) {
     return 'Cannot reach the election canister on the Internet Computer replica. Verify the replica is running and retry.';
+  }
+  if (/Wrong Network|Canister Not Deployed|canister_not_found|DestinationInvalid/i.test(firstLine)) {
+    return 'Wrong Network or Canister Not Deployed: The configured Canister ID was not found on this replica. Run dfx deploy canister and verify your network target.';
+  }
+  if (/delegation.*expired|session.*expired|Invalid signature.*expiry/i.test(firstLine)) {
+    return 'Your Internet Identity session has expired. Please sign in again to continue.';
   }
   if (/Double-vote detected|nullifier.*already/i.test(firstLine)) {
     return 'Double-vote prevented: A ballot with this nullifier has already been recorded on-chain.';

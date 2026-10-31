@@ -4,7 +4,10 @@
     "canister": {
       "type": "rust",
       "candid": "canister/canister.did",
-      "package": "canister"
+      "package": "canister",
+      "declarations": {
+        "output": "frontend/src/declarations/canister"
+      }
     },
     "frontend": {
       "type": "assets",

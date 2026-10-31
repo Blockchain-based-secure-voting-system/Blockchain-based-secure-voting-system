@@ -152,12 +152,19 @@ jobs:
 
       - name: Install DFX (Internet Computer SDK)
         run: |
-          DFXVM_INIT_YES=true DFX_VERSION=0.20.1 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+          DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
           echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+          echo "$HOME/.cache/dfinity/versions/0.29.0" >> $GITHUB_PATH
+
+      - name: Verify Zero Candid Interface Drift (dfx generate canister)
+        run: |
+          export PATH="$HOME/.local/share/dfx/bin:$HOME/.cache/dfinity/versions/0.29.0:$PATH"
+          dfx generate canister
+          git diff --exit-code frontend/src/declarations/canister/canister.did frontend/src/declarations/canister/canister.did.d.ts frontend/src/declarations/canister/canister.did.js
 
       - name: Start DFX Local Replica, Deploy Backend & Asset Canisters, and Verify Asset Canister Headers
         run: |
-          export PATH="$HOME/.local/share/dfx/bin:$PATH"
+          export PATH="$HOME/.local/share/dfx/bin:$HOME/.cache/dfinity/versions/0.29.0:$PATH"
           dfx start --background --clean
           dfx canister create canister
           dfx canister create frontend
@@ -174,6 +181,6 @@ jobs:
 
       - name: Run End-to-End Live Canister Integration Test Suite
         run: |
-          export PATH="$HOME/.local/share/dfx/bin:$PATH"
+          export PATH="$HOME/.local/share/dfx/bin:$HOME/.cache/dfinity/versions/0.29.0:$PATH"
           chmod +x scripts/integration_test.sh
           ./scripts/integration_test.sh

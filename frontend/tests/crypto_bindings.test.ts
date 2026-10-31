@@ -18,7 +18,7 @@ describe('Frontend Candid IDL Definition & Interface Compatibility', () => {
       Service: (methods: any) => ({ type: 'service', methods }),
     };
 
-    const service = idlFactory({ IDL: mockIDL });
+    const service: any = idlFactory({ IDL: mockIDL });
     expect(service).toBeDefined();
     expect(service.type).toBe('service');
     expect(service.methods).toHaveProperty('create_election');

@@ -11,30 +11,42 @@ export interface UseCanisterReturn {
   electionDetails: ElectionDetails | null;
   encryptedTally: EncryptedTally | null;
   loading: boolean;
+  isSlowNetwork: boolean;
   error: string | null;
   refreshState: () => Promise<void>;
+  getElectionDetails: () => Promise<ElectionDetails>;
+  getEncryptedTally: () => Promise<EncryptedTally | null>;
   createElection: (title: string, trusteePkHex: string, startTime: bigint, endTime: bigint) => Promise<string>;
   registerVoters: (voters: Principal[]) => Promise<bigint>;
   openVoting: () => Promise<string>;
   castBallot: (ballot: Ballot) => Promise<string>;
   closeVoting: () => Promise<string>;
   submitDecryptionProof: (proof: HexChaumPedersenProof) => Promise<bigint>;
+  isVoterRegistered: (principal: Principal) => Promise<boolean>;
   isRegisteredVoter: (principal: Principal) => Promise<boolean>;
   hasNullifierBeenUsed: (nullifier: Uint8Array | number[]) => Promise<boolean>;
 }
 
 function isE2EBypassActive(): boolean {
   if (!ENABLE_E2E_TEST_BYPASS) return false;
-  return typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('test_auth') === 'true';
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('live_replica') === 'true') return false;
+  return params.get('test_auth') === 'true';
+}
+
+function isLocalReplicaHost(): boolean {
+  return typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 }
 
 export function useCanister(identity: Identity | null, customCanisterId?: string): UseCanisterReturn {
   const [electionDetails, setElectionDetails] = useState<ElectionDetails | null>(null);
   const [encryptedTally, setEncryptedTally] = useState<EncryptedTally | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isSlowNetwork, setIsSlowNetwork] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Simulated E2E state only used when ENABLE_E2E_TEST_BYPASS is true AND local replica is unreachable
+  // Simulated E2E state only used when ENABLE_E2E_TEST_BYPASS is true AND live_replica is not active
   const e2eStateRef = useRef<{
     details: ElectionDetails;
     tally: EncryptedTally;
@@ -69,7 +81,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
 
   // Recreate actor cleanly whenever identity changes or becomes null (logout)
   const actor = useMemo(() => {
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const isLocal = isLocalReplicaHost();
     const host = isLocal ? 'http://127.0.0.1:4943' : 'https://icp0.io';
     const agent = new HttpAgent({ host, identity: identity || undefined });
 
@@ -82,32 +94,50 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
     return createActor(customCanisterId, { agent });
   }, [identity, customCanisterId]);
 
+  const getElectionDetails = useCallback(async (): Promise<ElectionDetails> => {
+    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+      return { ...e2eStateRef.current.details };
+    }
+    if (isLocalReplicaHost()) {
+      const agent = (actor as unknown as { [key: symbol]: { agent?: HttpAgent } })[Symbol.for('ic-agent-metadata')]?.agent;
+      if (agent) await agent.fetchRootKey().catch(() => {});
+    }
+    return actor.get_election_details();
+  }, [actor]);
+
+  const getEncryptedTally = useCallback(async (): Promise<EncryptedTally | null> => {
+    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+      return { ...e2eStateRef.current.tally };
+    }
+    const tallyRes = await actor.get_encrypted_tally();
+    if ('Ok' in tallyRes) {
+      return tallyRes.Ok;
+    }
+    return null;
+  }, [actor]);
+
   const refreshState = useCallback(async () => {
+    const slowTimer = setTimeout(() => {
+      setIsSlowNetwork(true);
+    }, 3000);
+
     try {
       setLoading(true);
       setError(null);
 
-      if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
-        setElectionDetails({ ...e2eStateRef.current.details });
-        setEncryptedTally({ ...e2eStateRef.current.tally });
-        return;
-      }
-
-      const details = await actor.get_election_details();
+      const details = await getElectionDetails();
       setElectionDetails(details);
 
-      const tallyRes = await actor.get_encrypted_tally();
-      if ('Ok' in tallyRes) {
-        setEncryptedTally(tallyRes.Ok);
-      } else {
-        setEncryptedTally(null);
-      }
+      const tally = await getEncryptedTally();
+      setEncryptedTally(tally);
+      setIsSlowNetwork(false);
     } catch (err: unknown) {
       setError(mapToSafeErrorMessage(err, 'Failed to connect to election canister'));
     } finally {
+      clearTimeout(slowTimer);
       setLoading(false);
     }
-  }, [actor]);
+  }, [getElectionDetails, getEncryptedTally]);
 
   useEffect(() => {
     refreshState();
@@ -211,7 +241,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
       if (e2eStateRef.current.nullifiers.has(nullHex)) {
-        throw new Error('Double-vote detected: A ballot with this nullifier has already been recorded on-chain.');
+        throw new Error(mapToSafeErrorMessage('Double-vote detected: nullifier has already been submitted'));
       }
       e2eStateRef.current.nullifiers.add(nullHex);
       e2eStateRef.current.details.total_ballots_cast += 1n;
@@ -267,7 +297,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
     }
   };
 
-  const isRegisteredVoter = async (principal: Principal): Promise<boolean> => {
+  const isVoterRegistered = async (principal: Principal): Promise<boolean> => {
     if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
       return e2eStateRef.current.voters.has(principal.toText()) || principal.toText() === 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
     }
@@ -288,15 +318,19 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
     electionDetails,
     encryptedTally,
     loading,
+    isSlowNetwork,
     error,
     refreshState,
+    getElectionDetails,
+    getEncryptedTally,
     createElection,
     registerVoters,
     openVoting,
     castBallot,
     closeVoting,
     submitDecryptionProof,
-    isRegisteredVoter,
+    isVoterRegistered,
+    isRegisteredVoter: isVoterRegistered,
     hasNullifierBeenUsed,
   };
 }

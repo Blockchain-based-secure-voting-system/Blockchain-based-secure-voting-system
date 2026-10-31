@@ -1,12 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { UseCanisterReturn } from '../hooks/useCanister';
+import { TRUSTEE_SHARE_GUIDE, type RoutePath, type WalkthroughRole } from '../content/copy';
 import { generateThresholdKeys, combineKeyShares, decryptAndProveTally } from '../crypto';
 import { PhaseBadge, getPhaseName } from '../components/PhaseBadge';
+import { GlossaryTerm, OrientationBanner } from '../components/OrientationBanner';
 import { validateThresholdBounds, validateAndParseTrusteeShares, validateTallyBound } from '../utils/validation';
 import { mapToSafeErrorMessage } from '../utils/errorMapper';
 import { Key, CheckCircle2, AlertTriangle, Cpu, ShieldAlert, Trash2 } from 'lucide-react';
 
-export const TrusteeView: React.FC<{ canister: UseCanisterReturn }> = ({ canister }) => {
+export const TrusteeView: React.FC<{
+  canister: UseCanisterReturn;
+  onNavigate?: (path: RoutePath) => void;
+  onOpenWalkthrough?: (role: WalkthroughRole) => void;
+}> = ({ canister, onNavigate, onOpenWalkthrough }) => {
   const { electionDetails, encryptedTally, submitDecryptionProof } = canister;
 
   // Keygen state
@@ -137,6 +143,23 @@ export const TrusteeView: React.FC<{ canister: UseCanisterReturn }> = ({ caniste
 
   return (
     <div className="stack-lg">
+      <OrientationBanner
+        electionDetails={electionDetails}
+        walkthroughRole="trustee"
+        onOpenWalkthrough={onOpenWalkthrough}
+        onNavigate={onNavigate}
+        orientation={{
+          whereAmI: 'Trustee (/trustee) — Threshold key ceremony and homomorphic tally decryption portal.',
+          whatCanIDoNow: isTallyingPhase
+            ? 'Combine at least n trustee shares in memory to unlock the encrypted tally and submit a Chaum-Pedersen proof.'
+            : 'Generate an n-of-m threshold key setup prior to Election Setup, or review the Share-Handling Guide below.',
+          whatHappensNext:
+            'When a valid Chaum-Pedersen proof is submitted during Tallying, the canister verifies it and transitions to Complete.',
+          whatIfSomethingGoesWrong:
+            'Shares are wiped from memory automatically on submission, error, tab hide, or unmount, while non-secret bounds remain preserved.',
+        }}
+      />
+
       <section className="card" aria-labelledby="trustee-portal-heading">
         <div className="row-between">
           <div className="stack-sm">
@@ -144,7 +167,27 @@ export const TrusteeView: React.FC<{ canister: UseCanisterReturn }> = ({ caniste
               Trustee Key Custody Portal
             </h2>
             <p className="text-secondary">
-              n-of-m Shamir threshold secret sharing &amp; Chaum-Pedersen ZK decryption.
+              Each{' '}
+              <GlossaryTerm term="trustee" onNavigate={onNavigate}>
+                trustee
+              </GlossaryTerm>{' '}
+              holds one share of a{' '}
+              <GlossaryTerm term="threshold" onNavigate={onNavigate}>
+                threshold (n-of-m)
+              </GlossaryTerm>{' '}
+              key used to decrypt the aggregated{' '}
+              <GlossaryTerm term="ciphertext" onNavigate={onNavigate}>
+                ciphertext
+              </GlossaryTerm>{' '}
+              (compiled from verified{' '}
+              <GlossaryTerm term="nullifier" onNavigate={onNavigate}>
+                nullifier
+              </GlossaryTerm>{' '}
+              ballots) and generate a Chaum-Pedersen{' '}
+              <GlossaryTerm term="proof" onNavigate={onNavigate}>
+                zero-knowledge proof
+              </GlossaryTerm>
+              .
             </p>
           </div>
           <PhaseBadge phase={phase} />
@@ -360,6 +403,26 @@ export const TrusteeView: React.FC<{ canister: UseCanisterReturn }> = ({ caniste
           )}
         </section>
       </div>
+
+      {/* Trustee Share-Handling Guide (Part 3.4) */}
+      <section className="card" aria-labelledby="trustee-guide-heading" data-testid="trustee-share-guide">
+        <div className="row-between">
+          <h3 id="trustee-guide-heading" className="card-title">
+            Trustee Share-Handling &amp; Custody Guide
+          </h3>
+          <span className="badge badge-neutral">Operational Custody Rules</span>
+        </div>
+        <div className="grid-2">
+          {TRUSTEE_SHARE_GUIDE.map((item, idx) => (
+            <div key={idx} className="stat-box">
+              <strong>{item.title}</strong>
+              <p className="text-secondary" style={{ fontSize: '0.84rem' }}>
+                {item.instruction}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 };

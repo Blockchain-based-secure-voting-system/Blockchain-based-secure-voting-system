@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { UseCanisterReturn } from '../hooks/useCanister';
 import type { AuthContextType } from '../hooks/useAuth';
+import type { RoutePath, WalkthroughRole } from '../content/copy';
 import { createClientSideBallot, verifyClientRangeProof } from '../crypto';
 import { PhaseBadge, getPhaseName } from '../components/PhaseBadge';
+import { GlossaryTerm, OrientationBanner } from '../components/OrientationBanner';
 import { validateHexString, validateElectionId } from '../utils/validation';
 import { mapToSafeErrorMessage } from '../utils/errorMapper';
 import { Vote, CheckCircle2, ShieldCheck, AlertTriangle, FileText, Lock, RefreshCw } from 'lucide-react';
@@ -28,7 +30,12 @@ async function computeCiphertextHashHex(c1Hex: string, c2Hex: string): Promise<s
   return '0x' + (h >>> 0).toString(16).padStart(8, '0').repeat(8);
 }
 
-export const VoterView: React.FC<{ canister: UseCanisterReturn; auth: AuthContextType }> = ({ canister, auth }) => {
+export const VoterView: React.FC<{
+  canister: UseCanisterReturn;
+  auth: AuthContextType;
+  onNavigate?: (path: RoutePath) => void;
+  onOpenWalkthrough?: (role: WalkthroughRole) => void;
+}> = ({ canister, auth, onNavigate, onOpenWalkthrough }) => {
   const { electionDetails, loading, error, refreshState, castBallot } = canister;
 
   const [selectedVote, setSelectedVote] = useState<0 | 1 | null>(null);
@@ -180,6 +187,23 @@ export const VoterView: React.FC<{ canister: UseCanisterReturn; auth: AuthContex
 
   return (
     <div className="stack-lg">
+      <OrientationBanner
+        electionDetails={electionDetails}
+        walkthroughRole="voter"
+        onOpenWalkthrough={onOpenWalkthrough}
+        onNavigate={onNavigate}
+        orientation={{
+          whereAmI: 'Vote (/vote) — Voter ballot encryption and submission portal.',
+          whatCanIDoNow: isVotingOpen
+            ? 'Sign in with Internet Identity, verify your Principal eligibility, choose your ballot option, and encrypt your ballot in browser WebAssembly.'
+            : `Voting is currently ${phaseName}. Ballot casting is only enabled when the canister phase is Voting.`,
+          whatHappensNext:
+            'After submission, your encrypted ballot is added to the homomorphic tally and you receive a 32-byte nullifier receipt to check on /verify.',
+          whatIfSomethingGoesWrong:
+            'Your non-secret Election ID remains preserved if an error occurs, while your secret passphrase is cleared automatically on submission or tab close.',
+        }}
+      />
+
       <section className="card" aria-labelledby="voter-portal-heading">
         <div className="row-between">
           <div className="stack-sm">
@@ -187,10 +211,46 @@ export const VoterView: React.FC<{ canister: UseCanisterReturn; auth: AuthContex
               Voter Portal
             </h2>
             <p className="text-secondary">
-              Cast your zero-knowledge encrypted ballot directly from your browser.
+              Your vote is locked inside a{' '}
+              <GlossaryTerm term="ciphertext" onNavigate={onNavigate}>
+                ciphertext
+              </GlossaryTerm>{' '}
+              with a 1-out-of-2{' '}
+              <GlossaryTerm term="proof" onNavigate={onNavigate}>
+                zero-knowledge proof
+              </GlossaryTerm>{' '}
+              and a unique{' '}
+              <GlossaryTerm term="nullifier" onNavigate={onNavigate}>
+                nullifier
+              </GlossaryTerm>{' '}
+              under the{' '}
+              <GlossaryTerm term="threshold" onNavigate={onNavigate}>
+                threshold
+              </GlossaryTerm>{' '}
+              <GlossaryTerm term="trustee" onNavigate={onNavigate}>
+                trustee
+              </GlossaryTerm>{' '}
+              public key.
             </p>
           </div>
           <PhaseBadge phase={phase} />
+        </div>
+
+        <div className="grid-2" style={{ fontSize: '0.84rem' }}>
+          <div className="stat-box">
+            <span className="stat-label">What Leaves Your Device</span>
+            <p className="text-secondary">
+              Encrypted <code>ciphertext</code> (C1, C2), 1-out-of-2 <code>range_proof</code>, and 32-byte{' '}
+              <code>nullifier</code> hash.
+            </p>
+          </div>
+          <div className="stat-box">
+            <span className="stat-label">What NEVER Leaves Your Device</span>
+            <p className="text-secondary">
+              Your plaintext vote choice (<code>0</code> or <code>1</code>), your secret passphrase, and your random
+              encryption scalar.
+            </p>
+          </div>
         </div>
 
         <ol className="step-list" aria-label="Ballot Submission Steps">

@@ -79,6 +79,8 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       : null
   );
 
+  const rootKeyReadyRef = useRef<Promise<unknown> | null>(null);
+
   // Recreate actor cleanly whenever identity changes or becomes null (logout)
   const actor = useMemo(() => {
     const isLocal = isLocalReplicaHost();
@@ -86,35 +88,46 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
     const agent = new HttpAgent({ host, identity: identity || undefined });
 
     if (isLocal && !isE2EBypassActive()) {
-      agent.fetchRootKey().catch(() => {
+      rootKeyReadyRef.current = agent.fetchRootKey().catch(() => {
         // Handled by refreshState error reporting
       });
+    } else {
+      rootKeyReadyRef.current = null;
     }
 
-    return createActor(customCanisterId, { agent });
+    const urlCanisterId =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('canister_id') || undefined
+        : undefined;
+
+    return createActor(customCanisterId || urlCanisterId, { agent });
   }, [identity, customCanisterId]);
+
+  const ensureRootKey = useCallback(async () => {
+    if (rootKeyReadyRef.current) {
+      await rootKeyReadyRef.current;
+    }
+  }, []);
 
   const getElectionDetails = useCallback(async (): Promise<ElectionDetails> => {
     if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
       return { ...e2eStateRef.current.details };
     }
-    if (isLocalReplicaHost()) {
-      const agent = (actor as unknown as { [key: symbol]: { agent?: HttpAgent } })[Symbol.for('ic-agent-metadata')]?.agent;
-      if (agent) await agent.fetchRootKey().catch(() => {});
-    }
+    await ensureRootKey();
     return actor.get_election_details();
-  }, [actor]);
+  }, [actor, ensureRootKey]);
 
   const getEncryptedTally = useCallback(async (): Promise<EncryptedTally | null> => {
     if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
       return { ...e2eStateRef.current.tally };
     }
+    await ensureRootKey();
     const tallyRes = await actor.get_encrypted_tally();
     if ('Ok' in tallyRes) {
       return tallyRes.Ok;
     }
     return null;
-  }, [actor]);
+  }, [actor, ensureRootKey]);
 
   const refreshState = useCallback(async () => {
     const slowTimer = setTimeout(() => {
@@ -170,6 +183,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       return `Election '${title}' initialized in Setup phase.`;
     }
     try {
+      await ensureRootKey();
       const res = await actor.create_election(title, trusteePkHex, startTime, endTime);
       if ('Err' in res) throw new Error(res.Err);
       await refreshState();
@@ -194,6 +208,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       return added;
     }
     try {
+      await ensureRootKey();
       const res = await actor.register_voters(voters);
       if ('Err' in res) throw new Error(res.Err);
       await refreshState();
@@ -210,6 +225,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       return 'Election transitioned to Voting phase.';
     }
     try {
+      await ensureRootKey();
       const res = await actor.open_voting();
       if ('Err' in res) throw new Error(res.Err);
       await refreshState();
@@ -254,6 +270,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       return 'Ballot successfully validated with ZK Range Proof and added to homomorphic tally';
     }
     try {
+      await ensureRootKey();
       const res = await actor.cast_ballot(ballot);
       if ('Err' in res) throw new Error(res.Err);
       await refreshState();
@@ -270,6 +287,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       return 'Voting closed. Election is now in Tallying phase.';
     }
     try {
+      await ensureRootKey();
       const res = await actor.close_voting();
       if ('Err' in res) throw new Error(res.Err);
       await refreshState();
@@ -288,6 +306,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       return proof.decrypted_tally;
     }
     try {
+      await ensureRootKey();
       const res = await actor.submit_decryption_proof(proof);
       if ('Err' in res) throw new Error(res.Err);
       await refreshState();
@@ -301,6 +320,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
     if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
       return e2eStateRef.current.voters.has(principal.toText()) || principal.toText() === 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
     }
+    await ensureRootKey();
     return actor.is_voter_registered(principal);
   };
 
@@ -311,6 +331,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
         .join('');
       return e2eStateRef.current.nullifiers.has(nullHex);
     }
+    await ensureRootKey();
     return actor.has_nullifier_been_used(nullifier);
   };
 

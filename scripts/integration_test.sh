@@ -64,6 +64,15 @@ echo "Post-Upgrade Canister Status:"
 echo "$STATUS_POST"
 
 if echo "$STATUS_POST" | grep -q "Complete" && echo "$STATUS_POST" | grep -q "true"; then
+    echo "[8/8] Executing Observer 'Verify It Yourself' Direct Canister Queries (dfx canister call)..."
+    echo "\$ dfx canister call canister get_election_details"
+    dfx canister call canister get_election_details
+    echo "\$ dfx canister call canister get_encrypted_tally"
+    dfx canister call canister get_encrypted_tally
+    echo "\$ dfx canister call canister is_voter_registered '(principal \"2vxsx-fae\")'"
+    dfx canister call canister is_voter_registered '(principal "2vxsx-fae")'
+    echo "\$ dfx canister call canister has_nullifier_been_used '(vec { 0 : nat8; ... })'"
+    dfx canister call canister has_nullifier_been_used '(vec { 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8 })'
     echo "=========================================================================="
     echo "LIVE REPLICA INTEGRATION TEST SUITE PASSED 100% (STATE SURVIVED UPGRADE)"
     echo "=========================================================================="

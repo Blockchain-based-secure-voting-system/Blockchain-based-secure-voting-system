@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import type { UseCanisterReturn } from '../hooks/useCanister';
 import type { AuthContextType } from '../hooks/useAuth';
+import { ADMIN_ELECTION_CHECKLIST, type RoutePath, type WalkthroughRole } from '../content/copy';
 import { PhaseBadge, getPhaseName } from '../components/PhaseBadge';
+import { GlossaryTerm, OrientationBanner } from '../components/OrientationBanner';
 import {
   validateElectionTitle,
   validateHexString,
@@ -11,7 +13,12 @@ import {
 import { mapToSafeErrorMessage } from '../utils/errorMapper';
 import { PlusCircle, UserPlus, Play, Square, AlertCircle, CheckCircle2, AlertTriangle, Lock } from 'lucide-react';
 
-export const AdminView: React.FC<{ canister: UseCanisterReturn; auth: AuthContextType }> = ({ canister, auth }) => {
+export const AdminView: React.FC<{
+  canister: UseCanisterReturn;
+  auth: AuthContextType;
+  onNavigate?: (path: RoutePath) => void;
+  onOpenWalkthrough?: (role: WalkthroughRole) => void;
+}> = ({ canister, auth, onNavigate, onOpenWalkthrough }) => {
   const { electionDetails, createElection, registerVoters, openVoting, closeVoting } = canister;
 
   const [title, setTitle] = useState('');
@@ -120,6 +127,25 @@ export const AdminView: React.FC<{ canister: UseCanisterReturn; auth: AuthContex
 
   return (
     <div className="stack-lg">
+      <OrientationBanner
+        electionDetails={electionDetails}
+        walkthroughRole="admin"
+        onOpenWalkthrough={onOpenWalkthrough}
+        onNavigate={onNavigate}
+        orientation={{
+          whereAmI: 'Run an Election (/admin) — Election administrator setup, voter roll management, and phase transition controls.',
+          whatCanIDoNow: isSetup
+            ? 'Configure election parameters, add eligible voter Principal IDs, or transition the canister from Setup to Voting.'
+            : isVoting
+              ? 'Monitor voting progress and close the Voting phase when the scheduled deadline arrives.'
+              : `Current phase is ${phaseName}. Administrative setup and voter registration are locked.`,
+          whatHappensNext:
+            'Once Voting is closed (Tallying phase), trustees combine key shares in /trustee to submit the Chaum-Pedersen proof.',
+          whatIfSomethingGoesWrong:
+            'If validation fails on any form field, your typed inputs are preserved so you can correct the line without re-entering the entire form.',
+        }}
+      />
+
       <section className="card" aria-labelledby="admin-portal-heading">
         <div className="row-between">
           <div className="stack-sm">
@@ -127,7 +153,26 @@ export const AdminView: React.FC<{ canister: UseCanisterReturn; auth: AuthContex
               Election Administration
             </h2>
             <p className="text-secondary">
-              Manage election parameters, voter registry, and irreversible lifecycle phases.
+              Configure the{' '}
+              <GlossaryTerm term="threshold" onNavigate={onNavigate}>
+                threshold
+              </GlossaryTerm>{' '}
+              <GlossaryTerm term="trustee" onNavigate={onNavigate}>
+                trustee
+              </GlossaryTerm>{' '}
+              public key so voters can submit encrypted{' '}
+              <GlossaryTerm term="ciphertext" onNavigate={onNavigate}>
+                ciphertexts
+              </GlossaryTerm>{' '}
+              with{' '}
+              <GlossaryTerm term="nullifier" onNavigate={onNavigate}>
+                nullifiers
+              </GlossaryTerm>{' '}
+              and{' '}
+              <GlossaryTerm term="proof" onNavigate={onNavigate}>
+                zero-knowledge proofs
+              </GlossaryTerm>
+              .
             </p>
           </div>
           <PhaseBadge phase={phase} />
@@ -339,6 +384,31 @@ export const AdminView: React.FC<{ canister: UseCanisterReturn; auth: AuthContex
             </div>
           </div>
         )}
+      </section>
+
+      {/* Election-Run Checklist for Administrators (Part 3.4) */}
+      <section className="card" aria-labelledby="admin-checklist-heading" data-testid="admin-election-checklist">
+        <div className="row-between">
+          <h3 id="admin-checklist-heading" className="card-title">
+            Election-Run Checklist (Administrator Procedure)
+          </h3>
+          <span className="badge badge-neutral">6 Operational Steps</span>
+        </div>
+        <p className="text-secondary">
+          Follow this checklist in order when organizing an election to ensure the Trustee Master Public Key, voter
+          registry, and phase deadlines are verified before opening ballot submission:
+        </p>
+        <div className="grid-2">
+          {ADMIN_ELECTION_CHECKLIST.map((item) => (
+            <div key={item.id} className="stat-box">
+              <span className="stat-label">{item.phase}</span>
+              <strong>{item.title}</strong>
+              <p className="text-secondary" style={{ fontSize: '0.84rem' }}>
+                {item.detail}
+              </p>
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );

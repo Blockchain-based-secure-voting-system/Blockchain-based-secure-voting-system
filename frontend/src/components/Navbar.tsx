@@ -1,15 +1,30 @@
 import React from 'react';
-import { ShieldCheck, UserCheck, Key, Eye, LogIn, LogOut, CheckCircle2, Sun, Moon } from 'lucide-react';
+import {
+  ShieldCheck,
+  UserCheck,
+  Key,
+  Eye,
+  LogIn,
+  LogOut,
+  CheckCircle2,
+  Sun,
+  Moon,
+  Home,
+  BookOpen,
+  HelpCircle,
+  Compass,
+} from 'lucide-react';
 import type { AuthContextType } from '../hooks/useAuth';
 import type { ElectionPhase } from '../declarations/canister/canister.did';
+import type { RoutePath, WalkthroughRole } from '../content/copy';
 import { getPhaseName } from './PhaseBadge';
 
-export type Role = 'public' | 'voter' | 'admin' | 'trustee';
 export type ThemeMode = 'light' | 'dark';
 
 interface NavbarProps {
-  currentRole: Role;
-  onSelectRole: (role: Role) => void;
+  currentPath: RoutePath;
+  onNavigate: (path: RoutePath) => void;
+  onOpenWalkthrough: (role: WalkthroughRole) => void;
   auth: AuthContextType;
   theme: ThemeMode;
   onToggleTheme: () => void;
@@ -18,9 +33,20 @@ interface NavbarProps {
 
 const PHASES: Array<'Setup' | 'Voting' | 'Tallying' | 'Complete'> = ['Setup', 'Voting', 'Tallying', 'Complete'];
 
+const NAV_ITEMS: Array<{ path: RoutePath; label: string; icon: React.ReactNode }> = [
+  { path: '/', label: 'Home', icon: <Home size={15} aria-hidden="true" /> },
+  { path: '/vote', label: 'Vote', icon: <UserCheck size={15} aria-hidden="true" /> },
+  { path: '/verify', label: 'Verify results', icon: <Eye size={15} aria-hidden="true" /> },
+  { path: '/admin', label: 'Run an election', icon: <ShieldCheck size={15} aria-hidden="true" /> },
+  { path: '/trustee', label: 'Trustee', icon: <Key size={15} aria-hidden="true" /> },
+  { path: '/learn', label: 'Learn', icon: <BookOpen size={15} aria-hidden="true" /> },
+  { path: '/help', label: 'Accessibility and help', icon: <HelpCircle size={15} aria-hidden="true" /> },
+];
+
 export const Navbar: React.FC<NavbarProps> = ({
-  currentRole,
-  onSelectRole,
+  currentPath,
+  onNavigate,
+  onOpenWalkthrough,
   auth,
   theme,
   onToggleTheme,
@@ -28,55 +54,63 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const activePhase = getPhaseName(phase);
 
+  const defaultWalkthroughRole: WalkthroughRole =
+    currentPath === '/admin'
+      ? 'admin'
+      : currentPath === '/trustee'
+        ? 'trustee'
+        : currentPath === '/verify'
+          ? 'observer'
+          : 'voter';
+
   return (
     <div className="stack-md">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+
       <header className="header-nav">
         <div className="brand-section">
           <ShieldCheck className="brand-icon" size={28} aria-hidden="true" />
           <div className="stack-sm">
-            <h1 className="brand-title">ICP Zero-Knowledge Voting</h1>
+            <span className="brand-title">ICP Zero-Knowledge Voting</span>
             <div>
               <span className="brand-badge">BN254 Homomorphic ElGamal</span>
             </div>
           </div>
         </div>
 
-        <nav className="role-tabs" aria-label="Election Role Portals">
-          <button
-            type="button"
-            className={`role-tab-btn ${currentRole === 'public' ? 'active' : ''}`}
-            aria-current={currentRole === 'public' ? 'page' : undefined}
-            onClick={() => onSelectRole('public')}
-          >
-            <Eye size={15} aria-hidden="true" /> Public Tally
-          </button>
-          <button
-            type="button"
-            className={`role-tab-btn ${currentRole === 'voter' ? 'active' : ''}`}
-            aria-current={currentRole === 'voter' ? 'page' : undefined}
-            onClick={() => onSelectRole('voter')}
-          >
-            <UserCheck size={15} aria-hidden="true" /> Voter
-          </button>
-          <button
-            type="button"
-            className={`role-tab-btn ${currentRole === 'admin' ? 'active' : ''}`}
-            aria-current={currentRole === 'admin' ? 'page' : undefined}
-            onClick={() => onSelectRole('admin')}
-          >
-            <ShieldCheck size={15} aria-hidden="true" /> Admin
-          </button>
-          <button
-            type="button"
-            className={`role-tab-btn ${currentRole === 'trustee' ? 'active' : ''}`}
-            aria-current={currentRole === 'trustee' ? 'page' : undefined}
-            onClick={() => onSelectRole('trustee')}
-          >
-            <Key size={15} aria-hidden="true" /> Trustee Key Custody
-          </button>
+        <nav className="role-tabs" aria-label="Primary Navigation">
+          {NAV_ITEMS.map((item) => {
+            const isActive = currentPath === item.path;
+            return (
+              <a
+                key={item.path}
+                href={item.path}
+                className={`role-tab-btn ${isActive ? 'active' : ''}`}
+                aria-current={isActive ? 'page' : undefined}
+                style={{ textDecoration: 'none' }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigate(item.path);
+                }}
+              >
+                {item.icon} {item.label}
+              </a>
+            );
+          })}
         </nav>
 
         <div className="header-actions">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => onOpenWalkthrough(defaultWalkthroughRole)}
+            aria-label="Open Guided Role Walkthrough"
+          >
+            <Compass size={14} aria-hidden="true" /> Walkthrough
+          </button>
+
           <button
             type="button"
             className="btn btn-secondary btn-sm"

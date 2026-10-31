@@ -184,3 +184,14 @@ jobs:
           export PATH="$HOME/.local/share/dfx/bin:$HOME/.cache/dfinity/versions/0.29.0:$PATH"
           chmod +x scripts/integration_test.sh
           ./scripts/integration_test.sh
+
+      - name: Run Playwright E2E Suite Against Live DFX Replica
+        working-directory: frontend
+        run: |
+          export PATH="$HOME/.local/share/dfx/bin:$HOME/.cache/dfinity/versions/0.29.0:$PATH"
+          LIVE_CANISTER_ID=$(cd .. && dfx canister id canister)
+          export LIVE_CANISTER_ID
+          export USE_LIVE_REPLICA=true
+          npm run build:e2e
+          npx playwright install --with-deps chromium
+          npx playwright test

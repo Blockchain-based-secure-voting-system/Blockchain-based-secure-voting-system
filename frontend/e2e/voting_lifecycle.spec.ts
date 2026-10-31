@@ -53,10 +53,7 @@ test.describe('ICP Zero-Knowledge Voting UI, Full Lifecycle, IA Routes, Walkthro
     });
 
     const isLiveReplica = process.env.USE_LIVE_REPLICA === 'true';
-    const liveCanisterId = process.env.LIVE_CANISTER_ID || '';
-    const querySuffix = isLiveReplica
-      ? `?test_auth=true&live_replica=true${liveCanisterId ? `&canister_id=${liveCanisterId}` : ''}`
-      : '?test_auth=true';
+    const querySuffix = isLiveReplica ? '?test_auth=true&live_replica=true' : '?test_auth=true';
 
     // 2. Open Home route (/) and inspect security headers
     const response = await page.goto(`/${querySuffix}`);

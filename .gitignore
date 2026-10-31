@@ -9,3 +9,10 @@ node_modules
 /frontend/screenshots
 /frontend/test-results
 /frontend/.vite
+.vercel
+/frontend/.vercel
+.env
+.env.*
+/frontend/.env
+/frontend/.env.*
+

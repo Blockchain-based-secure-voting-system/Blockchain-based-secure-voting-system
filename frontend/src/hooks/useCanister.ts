@@ -1,17 +1,18 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
-import { createActor, canisterId as defaultCanisterId } from '../declarations/canister';
+import { createActor, canisterId as defaultCanisterId, isLocalReplicaUrl } from '../declarations/canister';
 import type { ElectionDetails, EncryptedTally, Ballot, HexChaumPedersenProof } from '../declarations/canister/canister.did';
 import type { Identity } from '@dfinity/agent';
 import { ENABLE_E2E_TEST_BYPASS } from '../config/buildFlags.json';
-import { mapToSafeErrorMessage } from '../utils/errorMapper';
+import { mapToSafeErrorMessage, isDemoBackendExpiredError } from '../utils/errorMapper';
 
 export interface UseCanisterReturn {
   electionDetails: ElectionDetails | null;
   encryptedTally: EncryptedTally | null;
   loading: boolean;
   isSlowNetwork: boolean;
+  isDemoExpired?: boolean;
   error: string | null;
   refreshState: () => Promise<void>;
   getElectionDetails: () => Promise<ElectionDetails>;
@@ -39,11 +40,58 @@ function isLocalReplicaHost(): boolean {
   return typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 }
 
+/**
+ * Resolves the target IC host strictly from build-time environment variables (VITE_IC_HOST),
+ * falling back to http://127.0.0.1:4943 on localhost or https://icp-api.io in production.
+ * Never reads host from URL parameters or user-supplied input.
+ */
+export function resolveConfiguredIcHost(explicitEnvHost?: string): string {
+  const envMeta = (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string | undefined> }).env) || {};
+  const configured =
+    explicitEnvHost ??
+    envMeta.VITE_IC_HOST ??
+    (typeof process !== 'undefined' ? process?.env?.VITE_IC_HOST : undefined);
+
+  if (configured && configured.trim().length > 0) {
+    return configured.trim();
+  }
+  return isLocalReplicaHost() ? 'http://127.0.0.1:4943' : 'https://icp-api.io';
+}
+
+/**
+ * Resolves the target canister ID strictly from build-time environment variables
+ * (VITE_CANISTER_ID or VITE_CANISTER_ID_CANISTER) or defaultCanisterId.
+ * Never accepts a canister ID from window.location.search or any URL parameter,
+ * preventing phishing links from pointing the UI at a malicious canister.
+ */
+export function resolveConfiguredCanisterId(customCanisterId?: string): string {
+  if (customCanisterId && customCanisterId.trim().length > 0) {
+    return customCanisterId.trim();
+  }
+  const envMeta = (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string | undefined> }).env) || {};
+  const fromEnv =
+    envMeta.VITE_CANISTER_ID ||
+    envMeta.VITE_CANISTER_ID_CANISTER ||
+    (typeof process !== 'undefined' ? process?.env?.VITE_CANISTER_ID || process?.env?.VITE_CANISTER_ID_CANISTER : undefined);
+
+  return (fromEnv && fromEnv.trim()) || defaultCanisterId || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
+}
+
+/**
+ * Security Guard: Determines whether agent.fetchRootKey() is permitted for the given host.
+ * Returns true ONLY for local replica hosts (127.0.0.1, localhost, ::1).
+ * Never allows fetchRootKey() on mainnet or playground hosts (https://icp-api.io, https://icp0.io, etc.).
+ */
+export function shouldFetchRootKey(host: string): boolean {
+  return isLocalReplicaUrl(host);
+}
+
 export function useCanister(identity: Identity | null, customCanisterId?: string): UseCanisterReturn {
   const [electionDetails, setElectionDetails] = useState<ElectionDetails | null>(null);
   const [encryptedTally, setEncryptedTally] = useState<EncryptedTally | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSlowNetwork, setIsSlowNetwork] = useState<boolean>(false);
+  const [isDemoExpired, setIsDemoExpired] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Simulated E2E state only used when ENABLE_E2E_TEST_BYPASS is true AND live_replica is not active
@@ -83,11 +131,10 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
 
   // Recreate actor cleanly whenever identity changes or becomes null (logout)
   const actor = useMemo(() => {
-    const isLocal = isLocalReplicaHost();
-    const host = isLocal ? 'http://127.0.0.1:4943' : 'https://icp0.io';
+    const host = resolveConfiguredIcHost();
     const agent = new HttpAgent({ host, identity: identity || undefined });
 
-    if (isLocal && !isE2EBypassActive()) {
+    if (shouldFetchRootKey(host) && !isE2EBypassActive()) {
       rootKeyReadyRef.current = agent.fetchRootKey().catch(() => {
         // Handled by refreshState error reporting
       });
@@ -95,12 +142,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       rootKeyReadyRef.current = null;
     }
 
-    const urlCanisterId =
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('canister_id') || undefined
-        : undefined;
-
-    const targetCanisterId = customCanisterId || urlCanisterId || defaultCanisterId || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
+    const targetCanisterId = resolveConfiguredCanisterId(customCanisterId);
     return createActor(targetCanisterId, { agent });
   }, [identity, customCanisterId]);
 
@@ -138,6 +180,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
     try {
       setLoading(true);
       setError(null);
+      setIsDemoExpired(false);
 
       const details = await getElectionDetails();
       setElectionDetails(details);
@@ -146,6 +189,9 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       setEncryptedTally(tally);
       setIsSlowNetwork(false);
     } catch (err: unknown) {
+      if (isDemoBackendExpiredError(err)) {
+        setIsDemoExpired(true);
+      }
       setError(mapToSafeErrorMessage(err, 'Failed to connect to election canister'));
     } finally {
       clearTimeout(slowTimer);
@@ -341,6 +387,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
     encryptedTally,
     loading,
     isSlowNetwork,
+    isDemoExpired,
     error,
     refreshState,
     getElectionDetails,

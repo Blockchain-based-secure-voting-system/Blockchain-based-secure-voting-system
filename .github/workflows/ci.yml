@@ -194,6 +194,8 @@ jobs:
           git checkout -- src/declarations/canister/index.ts
           LIVE_CANISTER_ID=$(cd .. && dfx canister id canister)
           export LIVE_CANISTER_ID
+          export VITE_CANISTER_ID="$LIVE_CANISTER_ID"
+          export VITE_IC_HOST="http://127.0.0.1:4943"
           export USE_LIVE_REPLICA=true
           npm run build:e2e
           npx playwright install --with-deps chromium

@@ -1,6 +1,23 @@
 import { CANISTER_ERROR_MAP } from '../content/errors';
 
 /**
+ * Detects whether a canister/replica error indicates that the temporary ICP Playground
+ * demo backend has expired (20-minute TTL) or its WebAssembly module is not installed.
+ */
+export function isDemoBackendExpiredError(err: unknown): boolean {
+  if (!err) return false;
+  const raw = typeof err === 'string'
+    ? err
+    : err instanceof Error
+      ? err.message
+      : String(err);
+
+  return /canister_not_found|DestinationInvalid|IC0301|IC0537|has no wasm module|code_uninstall|Canister .* not found|Wrong Network or Canister Not Deployed/i.test(
+    raw
+  );
+}
+
+/**
  * Maps raw canister, network, or WebAssembly errors to safe, user-facing messages.
  * Strips stack traces, raw hex dumps of secrets, and internal state details.
  */
@@ -33,8 +50,8 @@ export function mapToSafeErrorMessage(err: unknown, fallbackContext: string = 'O
   if (/fetch|network|ECONNREFUSED|ERR_CONNECTION_REFUSED|Failed to fetch|unreachable/i.test(firstLine)) {
     return 'Cannot reach the election canister on the Internet Computer replica. Verify the replica is running and retry.';
   }
-  if (/Wrong Network|Canister Not Deployed|canister_not_found|DestinationInvalid/i.test(firstLine)) {
-    return 'Wrong Network or Canister Not Deployed: The configured Canister ID was not found on this replica. Run dfx deploy canister and verify your network target.';
+  if (/Wrong Network|Canister Not Deployed|canister_not_found|DestinationInvalid|IC0301|IC0537|has no wasm module|code_uninstall|Canister .* not found/i.test(firstLine)) {
+    return 'Wrong Network or Canister Not Deployed: The configured Canister ID was not found or the temporary ICP Playground backend (20-minute TTL) has expired. Run ./scripts/deploy_demo.sh or dfx deploy canister to redeploy.';
   }
   if (/delegation.*expired|session.*expired|Invalid signature.*expiry/i.test(firstLine)) {
     return 'Your Internet Identity session has expired. Please sign in again to continue.';

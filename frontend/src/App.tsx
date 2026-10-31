@@ -98,6 +98,39 @@ export function App() {
           phase={canister.electionDetails?.phase}
         />
 
+        <div className="alert alert-info" role="note" aria-label="Temporary Demo Deployment Notice" data-testid="demo-notice-banner">
+          <Clock size={18} aria-hidden="true" />
+          <div style={{ width: '100%' }}>
+            <strong>[TEMPORARY DEMO DEPLOYMENT NOTICE]:</strong> (1) The backend canister runs on the public ICP Playground
+            with a hard <strong>~20-minute time-to-live (TTL)</strong>, after which all election state is automatically deleted.
+            (2) This codebase is an <strong>unaudited reference implementation</strong> and must not be used for binding public
+            elections without an independent security audit. (3) When hosted on Vercel, the <strong>Vercel host operator controls
+            the JavaScript and WebAssembly bundle</strong> served to your browser that encrypts ballots client-side.
+          </div>
+        </div>
+
+        {canister.isDemoExpired && (
+          <div className="alert alert-danger" role="alert" aria-live="assertive" data-testid="demo-expired-banner">
+            <AlertCircle size={18} aria-hidden="true" />
+            <div className="row-between" style={{ width: '100%' }}>
+              <span>
+                <strong>[DEMO BACKEND EXPIRED OR NOT INSTALLED]:</strong> The ICP Playground demo canister has reached its
+                20-minute expiration window (or its WebAssembly module is not installed at the configured Canister ID).
+                Redeploy a fresh demo instance by running <code>./scripts/deploy_demo.sh</code> (or{' '}
+                <code>dfx deploy canister --playground</code>) and rebuilding with the new <code>VITE_CANISTER_ID</code>.
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={canister.refreshState}
+                disabled={canister.loading}
+              >
+                <RefreshCw size={14} aria-hidden="true" /> Retry Connection
+              </button>
+            </div>
+          </div>
+        )}
+
         {auth.sessionExpired && (
           <div className="alert alert-info" role="status" aria-live="polite" data-testid="session-expired-banner">
             <Clock size={18} aria-hidden="true" />

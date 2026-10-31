@@ -190,3 +190,49 @@ cargo run -p cli -- tally-decrypt-threshold-and-prove --canister-id "<CANISTER_I
 
 5. **Cryptographic Randomness**:
    - Client-side encryption relies on OS CSPRNG (`rand::thread_rng()`).
+
+---
+
+## 🌐 Demo deployment (temporary)
+
+A short-lived public demo can be deployed using the **ICP Playground** for the Rust backend canister (`dfx deploy canister --playground`) and **Vercel** for the React/TypeScript/WASM frontend (`frontend/vercel.json`).
+
+### 1. How to Redeploy the Public Demo (`scripts/deploy_demo.sh`)
+
+```bash
+export VERCEL_TOKEN="<your_vercel_personal_access_token>"
+chmod +x scripts/deploy_demo.sh
+./scripts/deploy_demo.sh
+```
+
+What `scripts/deploy_demo.sh` executes:
+1. Verifies required CLI tools (`dfx`, `node`, `npm`, `vercel`) and `VERCEL_TOKEN`.
+2. Compiles `canister` to `wasm32-unknown-unknown` and runs `dfx deploy canister --playground`.
+3. Extracts and validates the newly assigned Playground Canister Principal ID and runs a smoke query (`get_election_details`).
+4. Builds `frontend/dist/` with build-time environment variables (`VITE_CANISTER_ID=<PLAYGROUND_ID>` and `VITE_IC_HOST=https://icp-api.io`).
+5. Runs the production grep gate on `frontend/dist/` to guarantee zero test-bypass markers (`test_auth`, `ENABLE_E2E_TEST_BYPASS`) ship in the bundle.
+6. Deploys the frontend to Vercel (`vercel deploy --prod --yes`) and verifies HTTP status + CSP/WASM headers.
+
+*Browser-WASM Packaging Note*: The compiled browser WebAssembly cryptography module (`frontend/src/crypto/pkg/voting_crypto_wasm_bg.wasm` and its generated `wasm-bindgen` TypeScript/JS glue) is committed in the repository so Vercel's build container (or a local `npm run build` followed by `vercel deploy --prebuilt --prod`) does not require `rustc` or `wasm-pack` at deploy time.
+
+### 2. Why the Demo Expires After ~20 Minutes
+
+- Canisters deployed via `dfx deploy --playground` borrow a temporary canister slot from the shared ICP Playground pool with a strict **20-minute time-to-live (TTL)**.
+- Once the 20-minute window elapses, the playground pool automatically uninstalls/reclaims the canister and **all election state is permanently wiped**.
+- Every subsequent `dfx deploy canister --playground` assigns a new Canister ID, requiring the frontend to be rebuilt/redeployed with the updated `VITE_CANISTER_ID`.
+- When the playground backend expires, the UI automatically transitions into the `[DEMO BACKEND EXPIRED OR NOT INSTALLED]` state with redeploy instructions.
+
+### 3. Why Internet Identity Principals Differ by Frontend Origin
+
+- By design, Internet Identity (`https://identity.ic0.app`) derives a distinct, origin-scoped pseudonymous Principal ID for each frontend origin (`https://<your-deployment>.vercel.app` vs. `http://localhost:3000`).
+- **Operational Requirement**: Voters and administrators must sign in on the **stable production Vercel alias** (`*.vercel.app`), copy the Principal ID shown in the navigation bar, and register that exact origin-derived Principal ID in the Election Administration portal (`/admin`). Preview deployment URLs have different origins and therefore produce different Internet Identity principals unless `derivationOrigin` is configured with `/.well-known/ii-alternative-origins`.
+
+### 4. Honest Demo & Trust-Model Limitations
+
+- **Unaudited Reference Codebase**: Neither the Rust BN254 cryptographic primitives nor the canister/frontend code have undergone an independent third-party cryptographic audit.
+- **20-Minute Ephemeral Backend**: All elections, voter registries, ballots, and tallies on the ICP Playground are deleted after ~20 minutes.
+- **Single-Dealer Threshold Key Setup**: The $n$-of-$m$ Shamir secret sharing ceremony uses a single dealer in browser WASM or CLI memory during setup rather than a distributed key generation (DKG) protocol.
+- **No Coercion Resistance or Receipt-Freeness**: Voters who disclose their secret passphrase or randomness can prove how they voted to a third party.
+- **Client-Device Compromise Out of Scope**: Browser extensions or endpoint malware can read or alter a vote before WebAssembly encryption occurs.
+- **Frontend Host Operator Trust Boundary (Vercel vs. ICP Asset Canister)**: When the frontend is served from Vercel rather than an ICP certified asset canister, the Vercel project operator controls the JavaScript and WebAssembly bundle delivered to voters' browsers and could theoretically serve modified client code that exfiltrates plaintext choices before encryption.
+

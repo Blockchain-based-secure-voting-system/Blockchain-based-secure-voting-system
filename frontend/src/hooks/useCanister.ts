@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
-import { createActor } from '../declarations/canister';
+import { createActor, canisterId as defaultCanisterId } from '../declarations/canister';
 import type { ElectionDetails, EncryptedTally, Ballot, HexChaumPedersenProof } from '../declarations/canister/canister.did';
 import type { Identity } from '@dfinity/agent';
 import { ENABLE_E2E_TEST_BYPASS } from '../config/buildFlags.json';
@@ -100,7 +100,8 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
         ? new URLSearchParams(window.location.search).get('canister_id') || undefined
         : undefined;
 
-    return createActor(customCanisterId || urlCanisterId, { agent });
+    const targetCanisterId = customCanisterId || urlCanisterId || defaultCanisterId || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
+    return createActor(targetCanisterId, { agent });
   }, [identity, customCanisterId]);
 
   const ensureRootKey = useCallback(async () => {

@@ -161,6 +161,7 @@ jobs:
           export PATH="$HOME/.local/share/dfx/bin:$HOME/.cache/dfinity/versions/0.29.0:$PATH"
           dfx generate canister
           git diff --exit-code frontend/src/declarations/canister/canister.did frontend/src/declarations/canister/canister.did.d.ts frontend/src/declarations/canister/canister.did.js
+          rm -f frontend/src/declarations/canister/index.js frontend/src/declarations/canister/index.d.ts
 
       - name: Start DFX Local Replica, Deploy Backend & Asset Canisters, and Verify Asset Canister Headers
         run: |

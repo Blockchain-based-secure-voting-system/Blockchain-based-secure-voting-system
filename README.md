@@ -134,13 +134,15 @@ npm run dev     # Start local development server on http://localhost:3000
 
 ---
 
-## 💻 Local ICP Deployment & Mock Election Walkthrough
+## 💻 Local ICP Deployment (WSL2) & Mock Election Walkthrough
+
+*Historical Verification Note*: In earlier phases of this project on the Windows ARM64 host, all `dfx`-dependent verification ran exclusively inside GitHub Actions Ubuntu runners. With WSL2 (`Ubuntu` on `aarch64`) and `dfx 0.29.0` installed on the WSL-native ext4 filesystem (`/home/akhil/voting`), local replica and asset canister deployment can also be run directly via WSL2. Note that `dfx start --background` in WSL2 is tied to the lifetime of the originating Linux session unless kept open in an interactive terminal or detached via `setsid`.
 
 ```bash
-# 1. Start Local Replica
+# 1. Start Local Replica (use dfx 0.29.0 on WSL2 aarch64)
 dfx start --background --clean
 
-# 2. Deploy Canister
+# 2. Deploy Backend & Frontend Asset Canisters
 dfx deploy
 
 # 3A. Generate Single Trustee Key

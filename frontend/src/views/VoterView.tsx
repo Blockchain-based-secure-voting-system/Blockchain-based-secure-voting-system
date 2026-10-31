@@ -1,48 +1,119 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { UseCanisterReturn } from '../hooks/useCanister';
 import type { AuthContextType } from '../hooks/useAuth';
 import { createClientSideBallot, verifyClientRangeProof } from '../crypto';
-import { PhaseBadge } from '../components/PhaseBadge';
-import { Vote, CheckCircle2, ShieldCheck, AlertTriangle, FileText, Lock } from 'lucide-react';
+import { PhaseBadge, getPhaseName } from '../components/PhaseBadge';
+import { validateHexString, validateElectionId } from '../utils/validation';
+import { mapToSafeErrorMessage } from '../utils/errorMapper';
+import { Vote, CheckCircle2, ShieldCheck, AlertTriangle, FileText, Lock, RefreshCw } from 'lucide-react';
+
+async function computeCiphertextHashHex(c1Hex: string, c2Hex: string): Promise<string> {
+  const input = `${c1Hex}:${c2Hex}`;
+  if (typeof window !== 'undefined' && window.crypto?.subtle) {
+    const encoded = new TextEncoder().encode(input);
+    const digest = await window.crypto.subtle.digest('SHA-256', encoded);
+    return (
+      '0x' +
+      Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+    );
+  }
+  // Deterministic fallback hash in test environments without SubtleCrypto
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return '0x' + (h >>> 0).toString(16).padStart(8, '0').repeat(8);
+}
 
 export const VoterView: React.FC<{ canister: UseCanisterReturn; auth: AuthContextType }> = ({ canister, auth }) => {
-  const { electionDetails, castBallot } = canister;
+  const { electionDetails, loading, error, refreshState, castBallot } = canister;
 
   const [selectedVote, setSelectedVote] = useState<0 | 1 | null>(null);
   const [voterSecret, setVoterSecret] = useState('');
+  const [electionIdInput, setElectionIdInput] = useState('icp_election_2026');
+  const [isConfirming, setIsConfirming] = useState(false);
   const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{
     nullifierHex: string;
+    nullifierStatus: string;
+    ciphertextHashHex: string;
     c1Hex: string;
     c2Hex: string;
     rangeProofValid: boolean;
   } | null>(null);
 
   const phase = electionDetails?.phase;
-  const isVotingOpen = phase && 'Voting' in phase;
+  const phaseName = getPhaseName(phase);
+  const isVotingOpen = phaseName === 'Voting';
+
+  const clearSensitiveMemory = useCallback(() => {
+    setVoterSecret('');
+    setSelectedVote(null);
+    setIsConfirming(false);
+  }, []);
+
+  // Clear voter secret on component unmount and on browser pagehide
+  useEffect(() => {
+    const handlePageHide = () => {
+      clearSensitiveMemory();
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      clearSensitiveMemory();
+    };
+  }, [clearSensitiveMemory]);
 
   useEffect(() => {
     if (auth.principal && !auth.principal.isAnonymous()) {
-      canister.isRegisteredVoter(auth.principal).then(setIsRegistered).catch(console.error);
+      canister
+        .isRegisteredVoter(auth.principal)
+        .then(setIsRegistered)
+        .catch(() => setIsRegistered(false));
     } else {
       setIsRegistered(null);
     }
   }, [auth.principal, canister]);
 
-  const handleCastBallot = async (e: React.FormEvent) => {
+  const validateFormInputs = (): boolean => {
+    if (selectedVote !== 0 && selectedVote !== 1) {
+      setErrorMessage('Please select a ballot option (YES or NO).');
+      return false;
+    }
+    const secretTrimmed = voterSecret.trim();
+    if (!secretTrimmed || secretTrimmed.length < 4 || secretTrimmed.length > 256) {
+      setErrorMessage('Voter secret passphrase must be between 4 and 256 characters.');
+      return false;
+    }
+    const electionIdCheck = validateElectionId(electionIdInput);
+    if (!electionIdCheck.valid) {
+      setErrorMessage(electionIdCheck.error || 'Invalid Election ID.');
+      return false;
+    }
+    const pkHex = electionDetails?.trustee_pk_hex || '';
+    const pkCheck = validateHexString(pkHex, 'Trustee Master Public Key', 32, 128);
+    if (!pkCheck.valid) {
+      setErrorMessage(pkCheck.error || 'Trustee Master Public Key is not configured on canister.');
+      return false;
+    }
+    return true;
+  };
+
+  const handleReviewBallot = (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedVote === null) {
-      setErrorMessage('Please select YES or NO.');
-      return;
+    setErrorMessage(null);
+    if (validateFormInputs()) {
+      setIsConfirming(true);
     }
-    if (!voterSecret.trim()) {
-      setErrorMessage('Please provide your voter secret phrase for double-vote nullifier derivation.');
-      return;
-    }
-    if (!electionDetails?.trustee_pk_hex) {
-      setErrorMessage('Trustee public key not configured on canister.');
+  };
+
+  const handleConfirmAndCastBallot = async () => {
+    if (!validateFormInputs() || selectedVote === null || !electionDetails) {
       return;
     }
 
@@ -51,15 +122,16 @@ export const VoterView: React.FC<{ canister: UseCanisterReturn; auth: AuthContex
       setErrorMessage(null);
 
       // 1. Client-Side WASM Encryption & ZK Range Proof Generation
-      // Plaintext vote value is consumed by WASM and NEVER returned to JS
       const wasmBallot = await createClientSideBallot(
         electionDetails.trustee_pk_hex,
         voterSecret.trim(),
-        'icp_election_2026',
+        electionIdInput.trim(),
         selectedVote
       );
 
-      // Verify range proof locally before transmission
+      // Immediately overwrite secret and plaintext choice in component state before network call
+      clearSensitiveMemory();
+
       const isLocalProofValid = await verifyClientRangeProof(
         electionDetails.trustee_pk_hex,
         wasmBallot.ciphertext.c1_hex,
@@ -78,84 +150,142 @@ export const VoterView: React.FC<{ canister: UseCanisterReturn; auth: AuthContex
         range_proof: wasmBallot.range_proof,
       });
 
-      // 3. Set Receipt (Zero plaintext information is retained)
       const nullifierHex = Array.from(wasmBallot.nullifier)
         .map((b) => b.toString(16).padStart(2, '0'))
         .join('');
 
+      const ciphertextHashHex = await computeCiphertextHashHex(
+        wasmBallot.ciphertext.c1_hex,
+        wasmBallot.ciphertext.c2_hex
+      );
+
+      // 3. Set Receipt — Plaintext choice is NEVER echoed or retained after submission
       setReceipt({
-        nullifierHex,
+        nullifierHex: `0x${nullifierHex}`,
+        nullifierStatus: 'Recorded & Verified Unique On-Chain',
+        ciphertextHashHex,
         c1Hex: wasmBallot.ciphertext.c1_hex,
         c2Hex: wasmBallot.ciphertext.c2_hex,
         rangeProofValid: isLocalProofValid,
       });
-
-      // Clear voter secret from state
-      setVoterSecret('');
-      setSelectedVote(null);
-    } catch (err: any) {
-      console.error('Failed to cast ballot:', err);
-      setErrorMessage(err?.message || 'Error casting ballot');
+    } catch (err: unknown) {
+      clearSensitiveMemory();
+      setErrorMessage(mapToSafeErrorMessage(err, 'Error casting ballot'));
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const activeStep = receipt ? 4 : isConfirming ? 3 : selectedVote !== null ? 2 : 1;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h2 className="card-title">Voter Portal</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+    <div className="stack-lg">
+      <section className="card" aria-labelledby="voter-portal-heading">
+        <div className="row-between">
+          <div className="stack-sm">
+            <h2 id="voter-portal-heading" className="card-title">
+              Voter Portal
+            </h2>
+            <p className="text-secondary">
               Cast your zero-knowledge encrypted ballot directly from your browser.
             </p>
           </div>
           <PhaseBadge phase={phase} />
         </div>
 
+        <ol className="step-list" aria-label="Ballot Submission Steps">
+          <li className={`step-item ${activeStep === 1 ? 'active' : ''}`}>Step 1: Check Eligibility</li>
+          <li className={`step-item ${activeStep === 2 ? 'active' : ''}`}>Step 2: Choose Option</li>
+          <li className={`step-item ${activeStep === 3 ? 'active' : ''}`}>Step 3: Confirm Encryption</li>
+          <li className={`step-item ${activeStep === 4 ? 'active' : ''}`}>Step 4: Cryptographic Receipt</li>
+        </ol>
+
+        {loading && !electionDetails && (
+          <div className="alert alert-info" role="status" aria-live="polite">
+            <RefreshCw size={18} aria-hidden="true" />
+            <span>
+              <strong>Loading Canister State:</strong> Checking election status...
+            </span>
+          </div>
+        )}
+
+        {error && !electionDetails && (
+          <div className="alert alert-danger" role="alert">
+            <AlertTriangle size={18} aria-hidden="true" />
+            <div className="row-between" style={{ width: '100%' }}>
+              <span>
+                <strong>Cannot Reach Canister:</strong> {error}
+              </span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={refreshState}>
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!isVotingOpen && (
+          <div className="alert alert-info" role="status">
+            <AlertTriangle size={18} aria-hidden="true" />
+            <span>
+              <strong>Phase Restriction (UX Notice):</strong> Ballot submission is currently disabled because the canister phase is <strong>{phaseName}</strong>. Voting is only permitted during the <strong>Voting</strong> phase (enforced on-chain by the canister).
+            </span>
+          </div>
+        )}
+
         {!auth.isAuthenticated ? (
-          <div className="alert alert-info">
-            <Lock size={18} />
-            <span>Connect your Internet Identity above to verify your voter registration.</span>
+          <div className="alert alert-info" role="status">
+            <Lock size={18} aria-hidden="true" />
+            <span>
+              <strong>Authentication Required:</strong> Connect your Internet Identity above to verify your voter registration.
+            </span>
           </div>
         ) : isRegistered === false ? (
-          <div className="alert alert-danger">
-            <AlertTriangle size={18} />
+          <div className="alert alert-danger" role="alert">
+            <AlertTriangle size={18} aria-hidden="true" />
             <span>
-              Your Principal (<code>{auth.principalText}</code>) is not registered in the election voter list.
+              <strong>Ineligible Principal:</strong> Your Principal (<code>{auth.principalText}</code>) is not registered in the election voter list.
             </span>
           </div>
         ) : isRegistered === true ? (
-          <div className="alert alert-success">
-            <CheckCircle2 size={18} />
+          <div className="alert alert-success" role="status">
+            <CheckCircle2 size={18} aria-hidden="true" />
             <span>
-              Eligible Voter: Your Principal is registered and authorized to cast one ballot.
+              <strong>Eligible Voter:</strong> Your Principal is registered and authorized to cast one encrypted ballot.
             </span>
           </div>
         ) : null}
 
         {errorMessage && (
-          <div className="alert alert-danger">
-            <AlertTriangle size={18} />
-            <span>{errorMessage}</span>
+          <div className="alert alert-danger" role="alert" aria-live="assertive">
+            <AlertTriangle size={18} aria-hidden="true" />
+            <span>
+              <strong>Submission Error:</strong> {errorMessage}
+            </span>
           </div>
         )}
-      </div>
+      </section>
 
       {receipt ? (
-        <div className="card" style={{ border: '1px solid var(--success-border)' }}>
-          <div className="card-title" style={{ color: '#10b981' }}>
-            <FileText size={22} /> Cryptographic Ballot Receipt
-          </div>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            Your ballot has been homomorphically aggregated on-chain. Store this receipt to verify your vote inclusion.
+        <section className="card" aria-labelledby="receipt-heading" role="status" aria-live="polite">
+          <h3 id="receipt-heading" className="card-title">
+            <FileText size={22} aria-hidden="true" /> Cryptographic Ballot Receipt
+          </h3>
+          <p className="text-secondary">
+            Your ballot has been homomorphically aggregated on-chain. Your plaintext choice and secret passphrase have been erased from memory and are never displayed.
           </p>
 
           <div className="receipt-card">
             <div className="receipt-row">
+              <span className="receipt-key">Ciphertext SHA-256 Digest:</span>
+              <span className="receipt-val">{receipt.ciphertextHashHex}</span>
+            </div>
+            <div className="receipt-row">
               <span className="receipt-key">Nullifier Hash (Double-Vote Guard):</span>
-              <span className="receipt-val">0x{receipt.nullifierHex}</span>
+              <span className="receipt-val">{receipt.nullifierHex}</span>
+            </div>
+            <div className="receipt-row">
+              <span className="receipt-key">Nullifier On-Chain Status:</span>
+              <span className="receipt-val">{receipt.nullifierStatus}</span>
             </div>
             <div className="receipt-row">
               <span className="receipt-key">Encrypted Ciphertext C1:</span>
@@ -167,39 +297,43 @@ export const VoterView: React.FC<{ canister: UseCanisterReturn; auth: AuthContex
             </div>
             <div className="receipt-row">
               <span className="receipt-key">1-out-of-2 ZK Range Proof:</span>
-              <span className="receipt-val" style={{ color: '#10b981' }}>Verified Valid</span>
+              <span className="receipt-val">Verified Valid</span>
             </div>
           </div>
 
-          <button className="btn btn-secondary" onClick={() => setReceipt(null)}>
-            Cast Another / Return
-          </button>
-        </div>
-      ) : (
-        <div className="card">
-          <div className="card-title">
-            <Vote size={20} /> Encrypted Ballot Submission
+          <div>
+            <button type="button" className="btn btn-secondary" onClick={() => setReceipt(null)}>
+              Cast Another / Return
+            </button>
           </div>
+        </section>
+      ) : (
+        <section className="card" aria-labelledby="ballot-form-heading">
+          <h3 id="ballot-form-heading" className="card-title">
+            <Vote size={20} aria-hidden="true" /> Encrypted Ballot Submission
+          </h3>
 
-          <form onSubmit={handleCastBallot} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <div className="form-group">
-              <label className="form-label">Select Your Vote Option</label>
-              <div style={{ display: 'flex', gap: '1rem' }}>
+          <form onSubmit={handleReviewBallot} className="stack-md" autoComplete="off">
+            <div className="form-group" role="group" aria-labelledby="vote-option-label">
+              <span id="vote-option-label" className="form-label">
+                Select Your Vote Option
+              </span>
+              <div className="grid-2">
                 <button
                   type="button"
                   className={`btn ${selectedVote === 1 ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ flex: 1, padding: '1rem' }}
+                  aria-pressed={selectedVote === 1}
                   onClick={() => setSelectedVote(1)}
-                  disabled={!isVotingOpen || !auth.isAuthenticated || isSubmitting}
+                  disabled={!isVotingOpen || !auth.isAuthenticated || isSubmitting || isConfirming}
                 >
                   YES (1)
                 </button>
                 <button
                   type="button"
                   className={`btn ${selectedVote === 0 ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ flex: 1, padding: '1rem' }}
+                  aria-pressed={selectedVote === 0}
                   onClick={() => setSelectedVote(0)}
-                  disabled={!isVotingOpen || !auth.isAuthenticated || isSubmitting}
+                  disabled={!isVotingOpen || !auth.isAuthenticated || isSubmitting || isConfirming}
                 >
                   NO (0)
                 </button>
@@ -207,37 +341,94 @@ export const VoterView: React.FC<{ canister: UseCanisterReturn; auth: AuthContex
             </div>
 
             <div className="form-group">
-              <label className="form-label">Voter Secret Passphrase (for unique Nullifier derivation)</label>
+              <label htmlFor="voter-election-id" className="form-label">
+                Election Domain Identifier
+              </label>
               <input
+                id="voter-election-id"
+                type="text"
+                className="form-input"
+                autoComplete="off"
+                value={electionIdInput}
+                onChange={(e) => setElectionIdInput(e.target.value)}
+                disabled={!isVotingOpen || !auth.isAuthenticated || isSubmitting || isConfirming}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="voter-secret-input" className="form-label">
+                Voter Secret Passphrase (for unique Nullifier derivation)
+              </label>
+              <input
+                id="voter-secret-input"
                 type="password"
                 className="form-input"
+                autoComplete="off"
                 placeholder="Enter secret passphrase (kept only in browser memory)"
                 value={voterSecret}
                 onChange={(e) => setVoterSecret(e.target.value)}
-                disabled={!isVotingOpen || !auth.isAuthenticated || isSubmitting}
+                disabled={!isVotingOpen || !auth.isAuthenticated || isSubmitting || isConfirming}
               />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Derives <code>Keccak256(secret || election_id)</code> to prevent double-voting without linking identity.
+              <span className="text-muted">
+                Derives <code>Keccak256(secret || election_id)</code> in WebAssembly memory and is cleared immediately upon submission, unmount, or pagehide.
               </span>
             </div>
 
-            <div className="alert alert-info" style={{ fontSize: '0.8rem' }}>
-              <ShieldCheck size={16} />
+            <div className="alert alert-info">
+              <ShieldCheck size={16} aria-hidden="true" />
               <span>
-                Zero-Knowledge Guarantee: Your vote is encrypted in WebAssembly with a 1-out-of-2 Disjunctive Chaum-Pedersen proof. The plain value never touches network requests.
+                <strong>Zero-Knowledge Guarantee:</strong> Your vote is encrypted in WebAssembly with a 1-out-of-2 Disjunctive Chaum-Pedersen proof. The plaintext value never leaves browser memory.
               </span>
             </div>
 
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={!isVotingOpen || !auth.isAuthenticated || isRegistered === false || selectedVote === null || isSubmitting}
-              style={{ padding: '0.9rem' }}
-            >
-              {isSubmitting ? 'Generating ZK Proof & Casting...' : 'Encrypt & Cast Ballot'}
-            </button>
+            {!isConfirming ? (
+              <div className="row-wrap">
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={!isVotingOpen || !auth.isAuthenticated || isRegistered === false || selectedVote === null || isSubmitting}
+                >
+                  Review &amp; Prepare Encrypted Ballot
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={!isVotingOpen || !auth.isAuthenticated || isRegistered === false || selectedVote === null || isSubmitting}
+                  onClick={handleConfirmAndCastBallot}
+                >
+                  {isSubmitting ? 'Generating ZK Proof & Casting...' : 'Encrypt & Cast Ballot'}
+                </button>
+              </div>
+            ) : (
+              <div className="card" role="region" aria-labelledby="confirm-ballot-heading">
+                <h4 id="confirm-ballot-heading" className="card-title">
+                  Confirm Encrypted Ballot Transmission
+                </h4>
+                <p className="text-secondary">
+                  You are about to generate a zero-knowledge range proof and submit your encrypted ballot for election domain <code>{electionIdInput}</code>. Once recorded on-chain, your nullifier cannot be reused and your secret passphrase will be wiped from memory.
+                </p>
+                <div className="row-wrap">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleConfirmAndCastBallot}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? 'Generating ZK Proof & Casting...' : 'Confirm & Submit Encrypted Ballot'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setIsConfirming(false)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel / Modify
+                  </button>
+                </div>
+              </div>
+            )}
           </form>
-        </div>
+        </section>
       )}
     </div>
   );

@@ -20,7 +20,7 @@ jobs:
           components: clippy
 
       - name: Cache Cargo Dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -50,7 +50,7 @@ jobs:
         run: cargo clippy --package canister --target wasm32-unknown-unknown --locked -- -D warnings
 
   frontend:
-    name: Run Frontend Build, Unit & Playwright E2E Suite
+    name: Run Frontend Security Audit, Build, Grep, Headers, Axe & Playwright E2E
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -58,34 +58,83 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (Pinned v22.14.0)
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22.14.0'
           cache: 'npm'
-          cache-dependency-path: frontend/package.json
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Install Dependencies
-        run: npm install
+      - name: Install Dependencies (Deterministic Lockfile)
+        run: npm ci
 
-      - name: Run Frontend Unit Tests (Vitest)
+      - name: Supply Chain Security Audit (npm audit)
+        run: npm audit --audit-level=moderate
+
+      - name: Run Frontend Unit & Component Security Tests (Vitest)
         run: npm test
 
-      - name: Build Frontend Application (Vite + TypeScript)
+      - name: Build Production Frontend Bundle (dist/)
         run: npm run build
+
+      - name: Verify Zero Test-Bypass Code in Production Bundle (dist/ Grep Gate)
+        run: |
+          echo "=== Verifying production dist/ contains zero test_auth or bypass markers ==="
+          if grep -rnE "test_auth|ENABLE_E2E_TEST_BYPASS|E2E Automated Test Election|22be268019741f2fafe7cb402b489d701026dfa7ce9e585fdfdb4efea1211e40" dist/; then
+            echo "ERROR: Test bypass strings found in production dist/!"
+            exit 1
+          fi
+          echo "PASS: Zero test-bypass matches in production dist/."
+          echo "=== Recording WASM Artifact SHA-256 Integrity Hash ==="
+          sha256sum dist/assets/*.wasm src/crypto/pkg/voting_crypto_wasm_bg.wasm
+
+      - name: Build Separate E2E Frontend Bundle (dist-e2e/)
+        run: npm run build:e2e
+
+      - name: Verify Security & CSP Headers (curl -I Check)
+        run: |
+          nohup npm run preview -- --port 4173 > /tmp/preview.log 2>&1 &
+          PREVIEW_PID=$!
+          for i in $(seq 1 15); do
+            if curl -sI http://localhost:4173 | grep -q "HTTP/1.1 200"; then
+              break
+            fi
+            sleep 1
+          done
+          HEADERS=$(curl -sI http://localhost:4173)
+          echo "$HEADERS"
+          echo "$HEADERS" | grep -iq "Content-Security-Policy:.*default-src 'self'"
+          echo "$HEADERS" | grep -iq "wasm-unsafe-eval"
+          echo "$HEADERS" | grep -iq "X-Frame-Options: DENY"
+          echo "$HEADERS" | grep -iq "X-Content-Type-Options: nosniff"
+          echo "$HEADERS" | grep -iq "Referrer-Policy: strict-origin-when-cross-origin"
+          kill $PREVIEW_PID || true
 
       - name: Install Playwright Chromium Browser
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright E2E & Network Security Trace Suite
+      - name: Run Playwright E2E, CSP Violation Check, Network Trace & Axe Accessibility Suite
         run: npx playwright test
 
   integration:
-    name: Run Live Replica Integration Tests (DFX)
+    name: Run Live Replica Integration Tests & Asset Canister Header Check (DFX)
     runs-on: ubuntu-latest
     needs: [test, frontend]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Node.js (Pinned v22.14.0)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Production Frontend Bundle for Asset Canister
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -93,7 +142,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Cache Cargo Dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -106,13 +155,22 @@ jobs:
           DFXVM_INIT_YES=true DFX_VERSION=0.20.1 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
           echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
 
-      - name: Start DFX Local Replica & Deploy Canister
+      - name: Start DFX Local Replica, Deploy Backend & Asset Canisters, and Verify Asset Canister Headers
         run: |
           export PATH="$HOME/.local/share/dfx/bin:$PATH"
           dfx start --background --clean
           dfx canister create canister
+          dfx canister create frontend
           cargo build --package canister --target wasm32-unknown-unknown --locked --release
           dfx deploy canister
+          dfx deploy frontend
+          FRONTEND_ID=$(dfx canister id frontend)
+          echo "=== Asset Canister HTTP Security Headers (curl -I) ==="
+          ASSET_HEADERS=$(curl -sI "http://127.0.0.1:4943/?canisterId=${FRONTEND_ID}" -H "Host: ${FRONTEND_ID}.localhost")
+          echo "$ASSET_HEADERS"
+          echo "$ASSET_HEADERS" | grep -iq "content-security-policy:.*default-src 'self'"
+          echo "$ASSET_HEADERS" | grep -iq "x-frame-options: DENY"
+          echo "$ASSET_HEADERS" | grep -iq "x-content-type-options: nosniff"
 
       - name: Run End-to-End Live Canister Integration Test Suite
         run: |

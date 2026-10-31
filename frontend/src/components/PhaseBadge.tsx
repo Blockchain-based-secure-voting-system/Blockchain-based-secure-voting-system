@@ -1,23 +1,30 @@
 import React from 'react';
 import type { ElectionPhase } from '../declarations/canister/canister.did';
 
+export function getPhaseName(phase?: ElectionPhase | null): 'Not Initialized' | 'Setup' | 'Voting' | 'Tallying' | 'Complete' {
+  if (!phase) return 'Not Initialized';
+  if ('Setup' in phase) return 'Setup';
+  if ('Voting' in phase) return 'Voting';
+  if ('Tallying' in phase) return 'Tallying';
+  if ('Complete' in phase) return 'Complete';
+  return 'Not Initialized';
+}
+
 export const PhaseBadge: React.FC<{ phase?: ElectionPhase | null }> = ({ phase }) => {
-  if (!phase) {
-    return <span className="badge badge-setup">Not Initialized</span>;
+  const name = getPhaseName(phase);
+
+  if (name === 'Setup') {
+    return <span className="badge">Phase 1: Setup</span>;
+  }
+  if (name === 'Voting') {
+    return <span className="badge">Phase 2: Voting Open</span>;
+  }
+  if (name === 'Tallying') {
+    return <span className="badge">Phase 3: Tallying</span>;
+  }
+  if (name === 'Complete') {
+    return <span className="badge">Phase 4: Complete &amp; Verified</span>;
   }
 
-  if ('Setup' in phase) {
-    return <span className="badge badge-setup">Phase 1: Setup</span>;
-  }
-  if ('Voting' in phase) {
-    return <span className="badge badge-voting">Phase 2: Voting Open</span>;
-  }
-  if ('Tallying' in phase) {
-    return <span className="badge badge-tallying">Phase 3: Tallying</span>;
-  }
-  if ('Complete' in phase) {
-    return <span className="badge badge-complete">Phase 4: Complete & Verified</span>;
-  }
-
-  return <span className="badge badge-setup">Unknown</span>;
+  return <span className="badge badge-neutral">Not Initialized</span>;
 };

@@ -17,7 +17,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run preview -- --port 3000',
+    command: 'npm run preview:e2e',
     port: 3000,
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

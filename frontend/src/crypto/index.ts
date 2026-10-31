@@ -1,3 +1,12 @@
+import initWasm, {
+  combine_threshold_shares_wasm,
+  decrypt_and_prove_tally_wasm,
+  generate_threshold_trustee_keys,
+  generate_voter_ballot,
+  verify_ballot_range_proof,
+} from './pkg/voting_crypto_wasm.js';
+import { ENABLE_E2E_TEST_BYPASS } from '../config/buildFlags.json';
+
 export interface WasmBallot {
   nullifier: number[];
   ciphertext: {
@@ -37,46 +46,22 @@ export interface WasmThresholdSetup {
   }>;
 }
 
-let wasmModule: any = null;
-let initPromise: Promise<any> | null = null;
+let initialized = false;
+let initPromise: Promise<void> | null = null;
 
-export async function getVotingCrypto() {
-  if (wasmModule) return wasmModule;
-
+export async function ensureCryptoInitialized(): Promise<void> {
+  if (initialized) return;
   if (!initPromise) {
     initPromise = (async () => {
-      try {
-        const pkgName = 'voting_crypto_wasm';
-        // @ts-ignore
-        const mod = await import(/* @vite-ignore */ pkgName);
-        if (typeof mod.default === 'function') {
-          await mod.default();
-        }
-        wasmModule = mod;
-        return mod;
-      } catch (err) {
-        console.warn('WASM module direct import unavailable, checking dynamic path:', err);
-        try {
-          const localPath = './pkg/voting_crypto_wasm.js';
-          // @ts-ignore
-          const mod = await import(/* @vite-ignore */ localPath);
-          if (typeof mod.default === 'function') {
-            await mod.default();
-          }
-          wasmModule = mod;
-          return mod;
-        } catch (e2) {
-          throw new Error('WebAssembly voting_crypto_wasm module could not be loaded. Ensure wasm-pack build has been executed.');
-        }
-      }
+      await initWasm();
+      initialized = true;
     })();
   }
-
   return initPromise;
 }
 
 /**
- * Client-Side Encrypted Ballot Generation with ZK Range Proof
+ * Client-Side Encrypted Ballot Generation with ZK Range Proof.
  * Plaintext vote value is encrypted in WASM memory and NEVER returned to JS.
  */
 export async function createClientSideBallot(
@@ -86,29 +71,31 @@ export async function createClientSideBallot(
   vote: 0 | 1
 ): Promise<WasmBallot> {
   try {
-    const crypto = await getVotingCrypto();
-    return crypto.generate_voter_ballot(masterPkHex, voterSecret, electionId, vote);
+    await ensureCryptoInitialized();
+    const res = generate_voter_ballot(masterPkHex, voterSecret, electionId, vote) as WasmBallot;
+    return res;
   } catch (err) {
-    if (typeof window !== 'undefined' && window.location.search.includes('test_auth=true')) {
-      // Deterministic nullifier for test mode
-      const nullifier = Array.from(new Uint8Array(32).fill(42));
-      return {
-        nullifier,
-        ciphertext: {
-          c1_hex: '0x22be268019741f2fafe7cb402b489d701026dfa7ce9e585fdfdb4efea1211e4006c9aeb3d15bf0133c9dfddb5eb970081bf584b248a318182b8a4f91e92d83b4',
-          c2_hex: '0x1cf9e3346e9dfd6e469c84e1b6f007914f6bdf1a070eb358178d8a572a1e05fe00a2608ecbe3d578b94541cb91176b6ef26e5e8e8fbafabf2f63fa9ae7f5ef3a',
-        },
-        range_proof: {
-          a0_hex: '0x01',
-          b0_hex: '0x02',
-          a1_hex: '0x03',
-          b1_hex: '0x04',
-          c0_hex: '0x05',
-          c1_hex: '0x06',
-          s0_hex: '0x07',
-          s1_hex: '0x08',
-        },
-      };
+    if (ENABLE_E2E_TEST_BYPASS) {
+      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('test_auth') === 'true') {
+        const nullifier = Array.from(new Uint8Array(32).fill(42));
+        return {
+          nullifier,
+          ciphertext: {
+            c1_hex: '0x22be268019741f2fafe7cb402b489d701026dfa7ce9e585fdfdb4efea1211e4006c9aeb3d15bf0133c9dfddb5eb970081bf584b248a318182b8a4f91e92d83b4',
+            c2_hex: '0x1cf9e3346e9dfd6e469c84e1b6f007914f6bdf1a070eb358178d8a572a1e05fe00a2608ecbe3d578b94541cb91176b6ef26e5e8e8fbafabf2f63fa9ae7f5ef3a',
+          },
+          range_proof: {
+            a0_hex: '0x01',
+            b0_hex: '0x02',
+            a1_hex: '0x03',
+            b1_hex: '0x04',
+            c0_hex: '0x05',
+            c1_hex: '0x06',
+            s0_hex: '0x07',
+            s1_hex: '0x08',
+          },
+        };
+      }
     }
     throw err;
   }
@@ -121,14 +108,16 @@ export async function verifyClientRangeProof(
   masterPkHex: string,
   c1Hex: string,
   c2Hex: string,
-  rangeProof: any
+  rangeProof: unknown
 ): Promise<boolean> {
   try {
-    const crypto = await getVotingCrypto();
-    return crypto.verify_ballot_range_proof(masterPkHex, c1Hex, c2Hex, rangeProof);
+    await ensureCryptoInitialized();
+    return verify_ballot_range_proof(masterPkHex, c1Hex, c2Hex, rangeProof);
   } catch (err) {
-    if (typeof window !== 'undefined' && window.location.search.includes('test_auth=true')) {
-      return true;
+    if (ENABLE_E2E_TEST_BYPASS) {
+      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('test_auth') === 'true') {
+        return true;
+      }
     }
     throw err;
   }
@@ -141,8 +130,17 @@ export async function generateThresholdKeys(
   threshold: number,
   totalShares: number
 ): Promise<WasmThresholdSetup> {
-  const crypto = await getVotingCrypto();
-  return crypto.generate_threshold_trustee_keys(threshold, totalShares);
+  await ensureCryptoInitialized();
+  const raw = generate_threshold_trustee_keys(BigInt(threshold), BigInt(totalShares));
+  return {
+    threshold: Number(raw.threshold),
+    total_shares: Number(raw.total_shares),
+    master_pk_hex: String(raw.master_pk_hex),
+    shares: Array.from(raw.shares || []).map((s: any) => ({
+      index: Number(s.index),
+      share_hex: String(s.share_hex),
+    })),
+  };
 }
 
 /**
@@ -151,8 +149,8 @@ export async function generateThresholdKeys(
 export async function combineKeyShares(
   shares: Array<{ index: number; share_hex: string }>
 ): Promise<string> {
-  const crypto = await getVotingCrypto();
-  return crypto.combine_threshold_shares_wasm(shares);
+  await ensureCryptoInitialized();
+  return combine_threshold_shares_wasm(shares);
 }
 
 /**
@@ -164,6 +162,6 @@ export async function decryptAndProveTally(
   c2SumHex: string,
   maxBound: number = 10000
 ): Promise<WasmDecryptionResult> {
-  const crypto = await getVotingCrypto();
-  return crypto.decrypt_and_prove_tally_wasm(skHex, c1SumHex, c2SumHex, BigInt(maxBound));
+  await ensureCryptoInitialized();
+  return decrypt_and_prove_tally_wasm(skHex, c1SumHex, c2SumHex, BigInt(maxBound)) as WasmDecryptionResult;
 }

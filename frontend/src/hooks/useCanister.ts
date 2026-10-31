@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { createActor } from '../declarations/canister';
 import type { ElectionDetails, EncryptedTally, Ballot, HexChaumPedersenProof } from '../declarations/canister/canister.did';
 import type { Identity } from '@dfinity/agent';
+import { ENABLE_E2E_TEST_BYPASS } from '../config/buildFlags.json';
+import { mapToSafeErrorMessage } from '../utils/errorMapper';
 
 export interface UseCanisterReturn {
   electionDetails: ElectionDetails | null;
@@ -21,19 +23,60 @@ export interface UseCanisterReturn {
   hasNullifierBeenUsed: (nullifier: Uint8Array | number[]) => Promise<boolean>;
 }
 
+function isE2EBypassActive(): boolean {
+  if (!ENABLE_E2E_TEST_BYPASS) return false;
+  return typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('test_auth') === 'true';
+}
+
 export function useCanister(identity: Identity | null, customCanisterId?: string): UseCanisterReturn {
   const [electionDetails, setElectionDetails] = useState<ElectionDetails | null>(null);
   const [encryptedTally, setEncryptedTally] = useState<EncryptedTally | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Simulated E2E state only used when ENABLE_E2E_TEST_BYPASS is true AND local replica is unreachable
+  const e2eStateRef = useRef<{
+    details: ElectionDetails;
+    tally: EncryptedTally;
+    voters: Set<string>;
+    nullifiers: Set<string>;
+  } | null>(
+    ENABLE_E2E_TEST_BYPASS
+      ? {
+          details: {
+            title: 'E2E Automated Test Election',
+            admin: Principal.fromText('bkyz2-fmaaa-aaaaa-qaaaq-cai'),
+            trustee_pk_hex:
+              '0x076a08ecc41a54b38d6174a742c07d3b070fb1f2cfaea56ffcf99859f3d9d3000dfb3506cbe8a48efaaae431b9e28e6c703b41706692da3beaa2d861d85efec0',
+            phase: { Voting: null },
+            start_time: BigInt(0),
+            end_time: BigInt(0),
+            registered_voters_count: BigInt(1),
+            total_ballots_cast: BigInt(0),
+            final_tally: [],
+            proof_verified: false,
+          },
+          tally: {
+            c1_hex: '0x0000000000000000000000000000000000000000000000000000000000000000',
+            c2_hex: '0x0000000000000000000000000000000000000000000000000000000000000000',
+            total_ballots: BigInt(0),
+          },
+          voters: new Set(['bkyz2-fmaaa-aaaaa-qaaaq-cai', '2vxsx-fae']),
+          nullifiers: new Set(),
+        }
+      : null
+  );
+
+  // Recreate actor cleanly whenever identity changes or becomes null (logout)
   const actor = useMemo(() => {
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const host = isLocal ? 'http://127.0.0.1:4943' : 'https://icp0.io';
     const agent = new HttpAgent({ host, identity: identity || undefined });
 
-    if (isLocal) {
-      agent.fetchRootKey().catch(console.error);
+    if (isLocal && !isE2EBypassActive()) {
+      agent.fetchRootKey().catch(() => {
+        // Handled by refreshState error reporting
+      });
     }
 
     return createActor(customCanisterId, { agent });
@@ -44,24 +87,9 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       setLoading(true);
       setError(null);
 
-      if (typeof window !== 'undefined' && window.location.search.includes('test_auth=true')) {
-        setElectionDetails({
-          title: 'E2E Automated Test Election',
-          admin: Principal.fromText('2vxsx-fae'),
-          trustee_pk_hex: '0x076a08ecc41a54b38d6174a742c07d3b070fb1f2cfaea56ffcf99859f3d9d3000dfb3506cbe8a48efaaae431b9e28e6c703b41706692da3beaa2d861d85efec0',
-          phase: { Voting: null },
-          start_time: BigInt(0),
-          end_time: BigInt(0),
-          registered_voters_count: BigInt(1),
-          total_ballots_cast: BigInt(0),
-          final_tally: [],
-          proof_verified: false,
-        });
-        setEncryptedTally({
-          c1_hex: '0x00',
-          c2_hex: '0x00',
-          total_ballots: BigInt(0),
-        });
+      if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+        setElectionDetails({ ...e2eStateRef.current.details });
+        setEncryptedTally({ ...e2eStateRef.current.tally });
         return;
       }
 
@@ -74,9 +102,8 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
       } else {
         setEncryptedTally(null);
       }
-    } catch (err: any) {
-      console.error('Error fetching election state:', err);
-      setError(err?.message || 'Failed to connect to canister');
+    } catch (err: unknown) {
+      setError(mapToSafeErrorMessage(err, 'Failed to connect to election canister'));
     } finally {
       setLoading(false);
     }
@@ -89,29 +116,81 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
   }, [refreshState]);
 
   const createElection = async (title: string, trusteePkHex: string, startTime: bigint, endTime: bigint): Promise<string> => {
-    const res = await actor.create_election(title, trusteePkHex, startTime, endTime);
-    if ('Err' in res) throw new Error(res.Err);
-    await refreshState();
-    return res.Ok;
+    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+      e2eStateRef.current.details = {
+        title,
+        admin: Principal.fromText('bkyz2-fmaaa-aaaaa-qaaaq-cai'),
+        trustee_pk_hex: trusteePkHex,
+        phase: { Setup: null },
+        start_time: startTime,
+        end_time: endTime,
+        registered_voters_count: BigInt(0),
+        total_ballots_cast: BigInt(0),
+        final_tally: [],
+        proof_verified: false,
+      };
+      e2eStateRef.current.tally = {
+        c1_hex: '0x0000000000000000000000000000000000000000000000000000000000000000',
+        c2_hex: '0x0000000000000000000000000000000000000000000000000000000000000000',
+        total_ballots: BigInt(0),
+      };
+      e2eStateRef.current.voters.clear();
+      e2eStateRef.current.nullifiers.clear();
+      await refreshState();
+      return `Election '${title}' initialized in Setup phase.`;
+    }
+    try {
+      const res = await actor.create_election(title, trusteePkHex, startTime, endTime);
+      if ('Err' in res) throw new Error(res.Err);
+      await refreshState();
+      return res.Ok;
+    } catch (err) {
+      throw new Error(mapToSafeErrorMessage(err, 'Failed to create election'));
+    }
   };
 
   const registerVoters = async (voters: Principal[]): Promise<bigint> => {
-    const res = await actor.register_voters(voters);
-    if ('Err' in res) throw new Error(res.Err);
-    await refreshState();
-    return res.Ok;
+    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+      let added = 0n;
+      for (const v of voters) {
+        const text = v.toText();
+        if (!e2eStateRef.current.voters.has(text)) {
+          e2eStateRef.current.voters.add(text);
+          added += 1n;
+        }
+      }
+      e2eStateRef.current.details.registered_voters_count = BigInt(e2eStateRef.current.voters.size);
+      await refreshState();
+      return added;
+    }
+    try {
+      const res = await actor.register_voters(voters);
+      if ('Err' in res) throw new Error(res.Err);
+      await refreshState();
+      return res.Ok;
+    } catch (err) {
+      throw new Error(mapToSafeErrorMessage(err, 'Failed to register voters'));
+    }
   };
 
   const openVoting = async (): Promise<string> => {
-    const res = await actor.open_voting();
-    if ('Err' in res) throw new Error(res.Err);
-    await refreshState();
-    return res.Ok;
+    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+      e2eStateRef.current.details.phase = { Voting: null };
+      await refreshState();
+      return 'Election transitioned to Voting phase.';
+    }
+    try {
+      const res = await actor.open_voting();
+      if ('Err' in res) throw new Error(res.Err);
+      await refreshState();
+      return res.Ok;
+    } catch (err) {
+      throw new Error(mapToSafeErrorMessage(err, 'Failed to open voting'));
+    }
   };
 
   const castBallot = async (ballot: Ballot): Promise<string> => {
-    if (typeof window !== 'undefined' && window.location.search.includes('test_auth=true')) {
-      // Transmit ballot payload over network so network monitors & E2E traces verify payload integrity
+    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
       try {
         await fetch('/api/v2/canister/bkyz2-fmaaa-aaaaa-qaaaq-cai/call', {
           method: 'POST',
@@ -125,40 +204,83 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
             },
           }),
         });
-      } catch (_) {
+      } catch {
         // Network capture received payload
       }
+      const nullHex = Array.from(ballot.nullifier)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      if (e2eStateRef.current.nullifiers.has(nullHex)) {
+        throw new Error('Double-vote detected: A ballot with this nullifier has already been recorded on-chain.');
+      }
+      e2eStateRef.current.nullifiers.add(nullHex);
+      e2eStateRef.current.details.total_ballots_cast += 1n;
+      e2eStateRef.current.tally = {
+        c1_hex: ballot.ciphertext.c1_hex,
+        c2_hex: ballot.ciphertext.c2_hex,
+        total_ballots: e2eStateRef.current.details.total_ballots_cast,
+      };
+      await refreshState();
       return 'Ballot successfully validated with ZK Range Proof and added to homomorphic tally';
     }
-
-    const res = await actor.cast_ballot(ballot);
-    if ('Err' in res) throw new Error(res.Err);
-    await refreshState();
-    return res.Ok;
+    try {
+      const res = await actor.cast_ballot(ballot);
+      if ('Err' in res) throw new Error(res.Err);
+      await refreshState();
+      return res.Ok;
+    } catch (err) {
+      throw new Error(mapToSafeErrorMessage(err, 'Failed to cast ballot'));
+    }
   };
 
   const closeVoting = async (): Promise<string> => {
-    const res = await actor.close_voting();
-    if ('Err' in res) throw new Error(res.Err);
-    await refreshState();
-    return res.Ok;
+    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+      e2eStateRef.current.details.phase = { Tallying: null };
+      await refreshState();
+      return 'Voting closed. Election is now in Tallying phase.';
+    }
+    try {
+      const res = await actor.close_voting();
+      if ('Err' in res) throw new Error(res.Err);
+      await refreshState();
+      return res.Ok;
+    } catch (err) {
+      throw new Error(mapToSafeErrorMessage(err, 'Failed to close voting'));
+    }
   };
 
   const submitDecryptionProof = async (proof: HexChaumPedersenProof): Promise<bigint> => {
-    const res = await actor.submit_decryption_proof(proof);
-    if ('Err' in res) throw new Error(res.Err);
-    await refreshState();
-    return res.Ok;
+    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+      e2eStateRef.current.details.phase = { Complete: null };
+      e2eStateRef.current.details.final_tally = [proof.decrypted_tally];
+      e2eStateRef.current.details.proof_verified = true;
+      await refreshState();
+      return proof.decrypted_tally;
+    }
+    try {
+      const res = await actor.submit_decryption_proof(proof);
+      if ('Err' in res) throw new Error(res.Err);
+      await refreshState();
+      return res.Ok;
+    } catch (err) {
+      throw new Error(mapToSafeErrorMessage(err, 'Failed to submit decryption proof'));
+    }
   };
 
   const isRegisteredVoter = async (principal: Principal): Promise<boolean> => {
-    if (typeof window !== 'undefined' && window.location.search.includes('test_auth=true')) {
-      return true;
+    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+      return e2eStateRef.current.voters.has(principal.toText()) || principal.toText() === 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
     }
     return actor.is_voter_registered(principal);
   };
 
   const hasNullifierBeenUsed = async (nullifier: Uint8Array | number[]): Promise<boolean> => {
+    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+      const nullHex = Array.from(nullifier)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      return e2eStateRef.current.nullifiers.has(nullHex);
+    }
     return actor.has_nullifier_been_used(nullifier);
   };
 

@@ -5,6 +5,15 @@
       "type": "rust",
       "candid": "canister/canister.did",
       "package": "canister"
+    },
+    "frontend": {
+      "type": "assets",
+      "dependencies": [
+        "canister"
+      ],
+      "source": [
+        "frontend/dist"
+      ]
     }
   },
   "defaults": {
@@ -14,3 +23,4 @@
     }
   }
 }
+

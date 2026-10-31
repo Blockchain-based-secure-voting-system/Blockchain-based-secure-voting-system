@@ -1,0 +1,16 @@
+{
+  "name": "voting_crypto_wasm",
+  "type": "module",
+  "description": "WebAssembly (wasm-pack) bindings for browser-side electronic voting cryptography using BN254.",
+  "version": "0.1.0",
+  "files": [
+    "voting_crypto_wasm_bg.wasm",
+    "voting_crypto_wasm.js",
+    "voting_crypto_wasm.d.ts"
+  ],
+  "main": "voting_crypto_wasm.js",
+  "types": "voting_crypto_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

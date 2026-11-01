@@ -20,11 +20,12 @@ export default defineConfig(({ mode }) => {
     ],
     define: {
       'process.env': {},
+      global: 'globalThis',
     },
     server: {
       port: 3000,
       headers: {
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' http://127.0.0.1:4943 http://localhost:4943 https://icp0.io https://*.icp0.io https://icp-api.io https://identity.ic0.app; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:4943 http://localhost:4943 https://icp0.io https://*.icp0.io https://icp-api.io https://identity.ic0.app; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
         'X-Frame-Options': 'DENY',
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'strict-origin-when-cross-origin',

@@ -49,8 +49,8 @@ export function resolveConfiguredIcHost(explicitEnvHost?: string): string {
   const envMeta = (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string | undefined> }).env) || {};
   const configured =
     explicitEnvHost ??
-    envMeta.VITE_IC_HOST ??
-    (typeof process !== 'undefined' ? process?.env?.VITE_IC_HOST : undefined);
+    (typeof process !== 'undefined' ? process?.env?.VITE_IC_HOST : undefined) ??
+    envMeta.VITE_IC_HOST;
 
   if (configured && configured.trim().length > 0) {
     return configured.trim();
@@ -70,9 +70,9 @@ export function resolveConfiguredCanisterId(customCanisterId?: string): string {
   }
   const envMeta = (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string | undefined> }).env) || {};
   const fromEnv =
+    (typeof process !== 'undefined' ? process?.env?.VITE_CANISTER_ID || process?.env?.CANISTER_ID_CANISTER : undefined) ||
     envMeta.VITE_CANISTER_ID ||
-    envMeta.VITE_CANISTER_ID_CANISTER ||
-    (typeof process !== 'undefined' ? process?.env?.VITE_CANISTER_ID || process?.env?.VITE_CANISTER_ID_CANISTER : undefined);
+    envMeta.VITE_CANISTER_ID_CANISTER;
 
   return (fromEnv && fromEnv.trim()) || defaultCanisterId || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
 }

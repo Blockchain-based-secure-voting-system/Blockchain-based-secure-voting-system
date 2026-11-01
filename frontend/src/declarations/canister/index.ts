@@ -5,9 +5,9 @@ import type { _SERVICE } from './canister.did.d.ts';
 const envMeta = (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string | undefined> }).env) || {};
 
 export const canisterId =
+  (typeof process !== 'undefined' && (process?.env?.VITE_CANISTER_ID || process?.env?.CANISTER_ID_CANISTER)) ||
   envMeta.VITE_CANISTER_ID ||
   envMeta.VITE_CANISTER_ID_CANISTER ||
-  (typeof process !== 'undefined' && (process?.env?.VITE_CANISTER_ID || process?.env?.CANISTER_ID_CANISTER)) ||
   'bkyz2-fmaaa-aaaaa-qaaaq-cai';
 
 export interface CreateActorOptions {
@@ -35,8 +35,8 @@ export const createActor = (
   options: CreateActorOptions = {}
 ): ActorSubclass<_SERVICE> => {
   const configuredHost =
-    envMeta.VITE_IC_HOST ||
     (typeof process !== 'undefined' && process?.env?.VITE_IC_HOST) ||
+    envMeta.VITE_IC_HOST ||
     undefined;
 
   const isLocalWindow =

@@ -1,0 +1,17 @@
+[package]
+name = "election_core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure deterministic core for electronic voting state machine, time checks, and mathematical verification (no I/O)."
+
+[dependencies]
+voting_crypto = { path = "../voting_crypto" }
+serde = { version = "1.0", features = ["derive"] }
+hex = "0.4"
+thiserror = "1.0"
+
+[dev-dependencies]
+rand = "0.8"
+ark-bn254 = "0.4.0"
+ark-ff = "0.4.0"
+

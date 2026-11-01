@@ -2,6 +2,7 @@
 members = [
     "crates/voting_crypto",
     "crates/voting_crypto_wasm",
+    "crates/election_core",
     "canister",
     "cli"
 ]

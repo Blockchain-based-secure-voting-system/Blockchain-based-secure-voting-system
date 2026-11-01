@@ -28,11 +28,11 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Fast-Fail Check (Native CLI & Crypto Crate)
-        run: cargo check --package voting_crypto --package cli --locked --verbose
+      - name: Fast-Fail Check (Native CLI, Crypto & Core Crate)
+        run: cargo check --package voting_crypto --package election_core --package cli --locked --verbose
 
-      - name: Run Unit Tests (Cryptographic Suite & CLI)
-        run: cargo test --package voting_crypto --package cli --locked --verbose
+      - name: Run Unit Tests (Cryptographic Suite, Core State Machine & CLI)
+        run: cargo test --package voting_crypto --package election_core --package cli --locked --verbose
 
       # Canister only — mio/tokio-based crates (cli) must never be built against wasm32-unknown-unknown
       - name: Check Canister Wasm Target Build
@@ -42,8 +42,8 @@ jobs:
       - name: Check Browser Crypto WASM Crate Target Build
         run: cargo check --package voting_crypto_wasm --target wasm32-unknown-unknown --locked --verbose
 
-      - name: Run Cargo Clippy (Native CLI & Crypto Crate)
-        run: cargo clippy --package voting_crypto --package cli --locked -- -D warnings
+      - name: Run Cargo Clippy (Native CLI, Crypto & Core Crate)
+        run: cargo clippy --package voting_crypto --package election_core --package cli --locked -- -D warnings
 
       # Canister only — mio/tokio-based crates (cli) must never be built against wasm32-unknown-unknown
       - name: Run Cargo Clippy (Wasm Canister)

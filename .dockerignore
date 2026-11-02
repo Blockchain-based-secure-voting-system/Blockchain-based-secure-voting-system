@@ -1,8 +1,9 @@
-target/
-frontend/
-.git/
-.github/
-archive/
-docs/
+target
+.git
+node_modules
+frontend
+archive
+docs
 *.md
-.githooks/
+.githooks
+.env

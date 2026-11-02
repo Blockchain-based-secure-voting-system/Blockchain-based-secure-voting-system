@@ -1,37 +1,27 @@
-# Stage 1: Build binary using official Rust bookworm image
-FROM rust:1.85-bookworm AS builder
+FROM rust:1-bookworm AS builder
 
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy root manifests and workspace crates
-COPY Cargo.toml Cargo.lock ./
-COPY crates ./crates
-COPY cli ./cli
+# Copy full workspace context (filtered by .dockerignore)
+COPY . .
 
-# Build release server binary
-RUN cargo build --release --package server
+# Build release server binary with strict lockfile enforcement
+RUN cargo build --release --locked --package server \
+ && ls -l target/release/server
 
 # Stage 2: Minimal Debian runtime environment
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libssl3 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd -r -u 10001 app
 
-WORKDIR /app
+COPY --from=builder /app/target/release/server /usr/local/bin/server
 
-# Copy binary from builder stage
-COPY --from=builder /usr/src/app/target/release/server /app/server
-
-# Expose default HTTP port
 EXPOSE 8080
-
 ENV PORT=8080
 
-# Health check against Axum /healthz
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://127.0.0.1:${PORT}/healthz || exit 1
+USER app
 
-CMD ["/app/server"]
+CMD ["server"]

@@ -128,7 +128,7 @@ export const OrientationBanner: React.FC<OrientationBannerProps> = ({
           <strong>Voting</strong> to <strong>Tallying</strong> in{' '}
           {onNavigate ? (
             <a
-              href="/admin"
+              href={`/admin${typeof window !== 'undefined' ? window.location.search : ''}`}
               onClick={(e) => {
                 e.preventDefault();
                 onNavigate('/admin');

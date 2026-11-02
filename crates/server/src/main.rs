@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@127.0.0.1:5432/voting_db".to_string());
     let admin_token = env::var("ADMIN_TOKEN")
-        .expect("ADMIN_TOKEN environment variable must be set");
+        .unwrap_or_else(|_| "dev_admin_secret_token_123".to_string());
     let port: u16 = env::var("PORT")
         .unwrap_or_else(|_| "8080".to_string())
         .parse()

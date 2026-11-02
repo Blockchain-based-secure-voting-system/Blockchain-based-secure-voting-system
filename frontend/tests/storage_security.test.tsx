@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TrusteeView } from '../src/views/TrusteeView';
 import type { UseCanisterReturn } from '../src/hooks/useCanister';
-import { Principal } from '@dfinity/principal';
+import { Principal } from '../src/types/principal';
 
 // Mock external crypto & canister calls only
 vi.mock('../src/crypto', () => ({

@@ -1,0 +1,820 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "server",
+    "description": "Axum REST API server with PostgreSQL persistence, bulletin board hash-chain, and cryptographic voting endpoints.",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/admin/close-voting": {
+      "post": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "POST /api/v1/admin/close-voting",
+        "operationId": "close_voting",
+        "responses": {
+          "200": {
+            "description": "Voting closed, election transitioned to Tallying phase"
+          },
+          "400": {
+            "description": "Election not in Voting phase"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/credentials": {
+      "post": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "POST /api/v1/admin/credentials",
+        "operationId": "issue_credentials",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueCredentialsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Batch of high-entropy credential codes (shown only once)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueCredentialsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not in Setup phase"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/election": {
+      "post": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "POST /api/v1/admin/election",
+        "operationId": "create_election",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateElectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Election created in Setup phase",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElectionDetailsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid title, public key or time bounds"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/finalize-tally": {
+      "post": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "POST /api/v1/admin/finalize-tally",
+        "operationId": "finalize_tally",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeTallyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Chaum-Pedersen decryption proof verified and tally finalized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalizeTallyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid decryption proof or wrong phase"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/open-voting": {
+      "post": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "POST /api/v1/admin/open-voting",
+        "operationId": "open_voting",
+        "responses": {
+          "200": {
+            "description": "Voting phase opened with published roll commitment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenVotingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No credentials issued or deadline passed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/ballots": {
+      "post": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "POST /api/v1/ballots",
+        "operationId": "submit_ballot",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitBallotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Ballot mathematically validated and appended to ledger",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BallotReceiptResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Range proof failure or voting deadline passed"
+          },
+          "401": {
+            "description": "Unauthorized voter session"
+          },
+          "409": {
+            "description": "Double-vote prevented (nullifier already recorded)"
+          }
+        }
+      }
+    },
+    "/api/v1/bulletin": {
+      "get": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "GET /api/v1/bulletin",
+        "operationId": "get_bulletin",
+        "responses": {
+          "200": {
+            "description": "Complete append-only bulletin board ledger",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulletinLogResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/election": {
+      "get": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "GET /api/v1/election",
+        "operationId": "get_election",
+        "responses": {
+          "200": {
+            "description": "Current public election details, phase and metrics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElectionDetailsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No election initialized"
+          }
+        }
+      }
+    },
+    "/api/v1/tally": {
+      "get": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "GET /api/v1/tally",
+        "operationId": "get_tally",
+        "responses": {
+          "200": {
+            "description": "Homomorphic sum ciphertext calculated across all ballots",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TallyCiphertextResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/voter/login": {
+      "post": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "POST /api/v1/voter/login",
+        "operationId": "voter_login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoterLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful, short-lived session token returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoterLoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or consumed credential code"
+          },
+          "429": {
+            "description": "Rate limit exceeded (locked out due to guessing)"
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "handlers"
+        ],
+        "summary": "GET /healthz",
+        "operationId": "healthz",
+        "responses": {
+          "200": {
+            "description": "Service is healthy and connected to database",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database connection error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BallotReceiptResponse": {
+        "type": "object",
+        "required": [
+          "sequence_number",
+          "entry_hash",
+          "prev_hash",
+          "chain_head_hash",
+          "nullifier_hex",
+          "message"
+        ],
+        "properties": {
+          "chain_head_hash": {
+            "type": "string"
+          },
+          "entry_hash": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "nullifier_hex": {
+            "type": "string"
+          },
+          "prev_hash": {
+            "type": "string"
+          },
+          "sequence_number": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "BulletinEntry": {
+        "type": "object",
+        "required": [
+          "sequence_number",
+          "prev_hash",
+          "entry_hash",
+          "nullifier_hex",
+          "ciphertext_c1_hex",
+          "ciphertext_c2_hex",
+          "range_proof"
+        ],
+        "properties": {
+          "ciphertext_c1_hex": {
+            "type": "string"
+          },
+          "ciphertext_c2_hex": {
+            "type": "string"
+          },
+          "entry_hash": {
+            "type": "string"
+          },
+          "nullifier_hex": {
+            "type": "string"
+          },
+          "prev_hash": {
+            "type": "string"
+          },
+          "range_proof": {
+            "$ref": "#/components/schemas/HexDisjunctiveRangeProofDto"
+          },
+          "sequence_number": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "BulletinLogResponse": {
+        "type": "object",
+        "required": [
+          "entries",
+          "total_count",
+          "chain_head_hash"
+        ],
+        "properties": {
+          "chain_head_hash": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulletinEntry"
+            }
+          },
+          "total_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "CreateElectionRequest": {
+        "type": "object",
+        "required": [
+          "title",
+          "trustee_pk_hex"
+        ],
+        "properties": {
+          "end_time": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "minimum": 0
+          },
+          "start_time": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "trustee_pk_hex": {
+            "type": "string"
+          }
+        }
+      },
+      "ElectionDetailsResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "trustee_pk_hex",
+          "phase",
+          "credentials_issued_count",
+          "credentials_used_count",
+          "ballots_in_log_count",
+          "chain_head_hash",
+          "proof_verified"
+        ],
+        "properties": {
+          "ballots_in_log_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "chain_head_hash": {
+            "type": "string"
+          },
+          "credentials_issued_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "credentials_used_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "end_time": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "minimum": 0
+          },
+          "final_tally": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/ElectionPhaseDto"
+          },
+          "proof_verified": {
+            "type": "boolean"
+          },
+          "roll_commitment_hex": {
+            "type": "string",
+            "nullable": true
+          },
+          "start_time": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "trustee_pk_hex": {
+            "type": "string"
+          }
+        }
+      },
+      "ElectionPhaseDto": {
+        "type": "string",
+        "enum": [
+          "Setup",
+          "Voting",
+          "Tallying",
+          "Complete"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error",
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "FinalizeTallyRequest": {
+        "type": "object",
+        "required": [
+          "proof"
+        ],
+        "properties": {
+          "proof": {
+            "$ref": "#/components/schemas/HexChaumPedersenProofDto"
+          }
+        }
+      },
+      "FinalizeTallyResponse": {
+        "type": "object",
+        "required": [
+          "phase",
+          "final_tally",
+          "proof_verified"
+        ],
+        "properties": {
+          "final_tally": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "phase": {
+            "$ref": "#/components/schemas/ElectionPhaseDto"
+          },
+          "proof_verified": {
+            "type": "boolean"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "database",
+          "timestamp"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "HexChaumPedersenProofDto": {
+        "type": "object",
+        "required": [
+          "a_hex",
+          "b_hex",
+          "z_hex"
+        ],
+        "properties": {
+          "a_hex": {
+            "type": "string"
+          },
+          "b_hex": {
+            "type": "string"
+          },
+          "z_hex": {
+            "type": "string"
+          }
+        }
+      },
+      "HexCiphertextDto": {
+        "type": "object",
+        "required": [
+          "c1_hex",
+          "c2_hex"
+        ],
+        "properties": {
+          "c1_hex": {
+            "type": "string"
+          },
+          "c2_hex": {
+            "type": "string"
+          }
+        }
+      },
+      "HexDisjunctiveRangeProofDto": {
+        "type": "object",
+        "required": [
+          "a0_hex",
+          "b0_hex",
+          "a1_hex",
+          "b1_hex",
+          "c0_hex",
+          "c1_hex",
+          "s0_hex",
+          "s1_hex"
+        ],
+        "properties": {
+          "a0_hex": {
+            "type": "string"
+          },
+          "a1_hex": {
+            "type": "string"
+          },
+          "b0_hex": {
+            "type": "string"
+          },
+          "b1_hex": {
+            "type": "string"
+          },
+          "c0_hex": {
+            "type": "string"
+          },
+          "c1_hex": {
+            "type": "string"
+          },
+          "s0_hex": {
+            "type": "string"
+          },
+          "s1_hex": {
+            "type": "string"
+          }
+        }
+      },
+      "IssueCredentialsRequest": {
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "IssueCredentialsResponse": {
+        "type": "object",
+        "required": [
+          "credentials",
+          "count_issued",
+          "warning"
+        ],
+        "properties": {
+          "count_issued": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "credentials": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warning": {
+            "type": "string"
+          }
+        }
+      },
+      "OpenVotingResponse": {
+        "type": "object",
+        "required": [
+          "phase",
+          "roll_commitment_hex",
+          "credentials_issued"
+        ],
+        "properties": {
+          "credentials_issued": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "phase": {
+            "$ref": "#/components/schemas/ElectionPhaseDto"
+          },
+          "roll_commitment_hex": {
+            "type": "string"
+          }
+        }
+      },
+      "SubmitBallotRequest": {
+        "type": "object",
+        "required": [
+          "nullifier_hex",
+          "ciphertext",
+          "range_proof"
+        ],
+        "properties": {
+          "ciphertext": {
+            "$ref": "#/components/schemas/HexCiphertextDto"
+          },
+          "nullifier_hex": {
+            "type": "string"
+          },
+          "range_proof": {
+            "$ref": "#/components/schemas/HexDisjunctiveRangeProofDto"
+          }
+        }
+      },
+      "TallyCiphertextResponse": {
+        "type": "object",
+        "required": [
+          "c1_hex",
+          "c2_hex",
+          "total_ballots"
+        ],
+        "properties": {
+          "c1_hex": {
+            "type": "string"
+          },
+          "c2_hex": {
+            "type": "string"
+          },
+          "total_ballots": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "VoterLoginRequest": {
+        "type": "object",
+        "required": [
+          "credential_code"
+        ],
+        "properties": {
+          "credential_code": {
+            "type": "string"
+          }
+        }
+      },
+      "VoterLoginResponse": {
+        "type": "object",
+        "required": [
+          "session_token",
+          "expires_at",
+          "election_phase"
+        ],
+        "properties": {
+          "election_phase": {
+            "$ref": "#/components/schemas/ElectionPhaseDto"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "session_token": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "public",
+      "description": "Public audit and verification endpoints"
+    },
+    {
+      "name": "voter",
+      "description": "Voter authentication and ballot submission"
+    },
+    {
+      "name": "admin",
+      "description": "Administrator lifecycle and credential issuance"
+    }
+  ]
+}

@@ -14,17 +14,13 @@ if [[ "${OSTYPE:-}" == "msys" || "${OSTYPE:-}" == "cygwin" || "${OSTYPE:-}" == "
     fi
 fi
 
-echo "[1/4] Checking Native Crates (voting_crypto, cli)..."
-cargo check --package voting_crypto --package cli --locked
+echo "[1/3] Checking Native Crates (voting_crypto, election_core, cli, server)..."
+cargo check --package voting_crypto --package election_core --package cli --package server --locked
 
-echo "[2/4] Checking Canister Wasm Target (canister)..."
-cargo check --package canister --target wasm32-unknown-unknown --locked
+echo "[2/3] Running Clippy Checks..."
+cargo clippy --package voting_crypto --package election_core --package cli --package server --locked -- -D warnings
 
-echo "[3/4] Running Clippy Checks..."
-cargo clippy --package voting_crypto --package cli --locked -- -D warnings
-cargo clippy --package canister --target wasm32-unknown-unknown --locked -- -D warnings
-
-echo "[4/4] Running Native Unit Tests..."
-cargo test --package voting_crypto --package cli --locked
+echo "[3/3] Running Native Unit Tests..."
+cargo test --package voting_crypto --package election_core --package cli --locked
 
 echo "=== ALL PRE-PUSH LOCAL CHECKS PASSED 100% ==="

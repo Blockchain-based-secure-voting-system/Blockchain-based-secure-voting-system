@@ -19,7 +19,7 @@ import { VoterView } from '../src/views/VoterView';
 import { TrusteeView } from '../src/views/TrusteeView';
 import type { UseCanisterReturn } from '../src/hooks/useCanister';
 import type { AuthContextType } from '../src/hooks/useAuth';
-import { Principal } from '@dfinity/principal';
+import { Principal } from '../src/types/principal';
 
 describe('Boundary Input Validation Helpers', () => {
   it('validates Principal IDs and rejects malformed strings', () => {
@@ -143,6 +143,7 @@ describe('Voter & Trustee Secret-Clearing Behavior (Unmount & Pagehide)', () => 
       login: vi.fn(),
       logout: vi.fn(),
       isLoading: false,
+      sessionToken: null,
     };
 
     const { unmount } = render(<VoterView canister={mockCanister} auth={mockAuth} />);

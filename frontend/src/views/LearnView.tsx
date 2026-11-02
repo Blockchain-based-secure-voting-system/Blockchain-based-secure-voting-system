@@ -204,15 +204,11 @@ export const LearnView: React.FC<LearnViewProps> = ({
               borderRadius: '6px',
             }}
           >
-            <h3 style={{ fontSize: '0.96rem', marginBottom: '0.4rem' }}>1. Browser Local Storage &amp; IndexedDB</h3>
+            <h3 style={{ fontSize: '0.96rem', marginBottom: '0.4rem' }}>1. Browser Local Storage &amp; Memory Safety</h3>
             <p className="text-secondary" style={{ lineHeight: 1.55 }}>
-              This application writes <strong>zero keys</strong> to <code>window.localStorage</code> or{' '}
-              <code>window.sessionStorage</code> (enforced by automated component tests). When you sign in with Internet
-              Identity, the official <code>@dfinity/auth-client</code> library stores only your delegated session keypair
-              in browser IndexedDB (<code>auth-client-db</code> &rarr; <code>ic-keyval</code>: keys{' '}
-              <code>identity</code>, <code>delegation</code>, <code>iv</code>) with an 8-hour maximum time-to-live. Voter
-              secret passphrases and trustee key shares exist strictly in volatile React memory and are cleared on
-              <code>pagehide</code> and component unmount.
+              This application writes <strong>zero keys</strong> to <code>window.localStorage</code> (enforced by automated
+              component tests). Voter secret passphrases, credential codes, and trustee key shares exist strictly in volatile
+              React memory and are cleared on <code>pagehide</code> and component unmount.
             </p>
           </div>
 
@@ -224,20 +220,19 @@ export const LearnView: React.FC<LearnViewProps> = ({
               borderRadius: '6px',
             }}
           >
-            <h3 style={{ fontSize: '0.96rem', marginBottom: '0.4rem' }}>2. On-Chain Canister State &amp; Retention</h3>
+            <h3 style={{ fontSize: '0.96rem', marginBottom: '0.4rem' }}>2. Server Database State &amp; Append-Only Ledger</h3>
             <p className="text-secondary" style={{ lineHeight: 1.55 }}>
-              The ICP canister stores: the election title, the administrator Principal ID, the Trustee Master Public Key
-              hex, the set of registered voter Principal IDs (<code>registered_voters</code>), the set of 32-byte used
-              nullifier hashes (<code>used_nullifiers</code>), the homomorphic ciphertext sum (<code>C1</code>,{' '}
-              <code>C2</code>), and the final verified tally. On-chain records persist in canister stable memory across
-              upgrades until the administrator re-initializes the election or deletes the canister.
+              The Axum + PostgreSQL server stores: the election title, Trustee Master Public Key hex, SHA-256 hashes of voter
+              credentials, and the append-only bulletin ledger (<code>prev_hash</code>, <code>entry_hash</code>,{' '}
+              <code>nullifier_hex</code>, ciphertext curve points, and 1-out-of-2 range proofs). The database enforces an
+              append-only trigger strictly prohibiting <code>UPDATE</code> and <code>DELETE</code> operations on cast ballots.
             </p>
           </div>
         </div>
         <p className="text-secondary mt-4" style={{ fontSize: '0.86rem' }}>
           <strong>Zero Analytics or Third-Party Trackers:</strong> This frontend loads zero external fonts, zero
           analytics scripts, and zero third-party telemetry. Every network request goes exclusively to the application
-          origin, the configured Internet Computer replica, or Internet Identity during sign-in.
+          origin and the configured Axum API server.
         </p>
       </div>
 

@@ -1,58 +1,22 @@
+mod verifier;
+
 use anyhow::{anyhow, Context, Result};
-use candid::{CandidType, Deserialize, Principal};
+use ark_bn254::{Fr, G1Projective};
+use ark_ec::Group;
+use ark_ff::UniformRand;
 use clap::{Parser, Subcommand};
-use ic_agent::identity::AnonymousIdentity;
-use ic_agent::Agent;
 use rand::thread_rng;
-use std::str::FromStr;
-
+use server::models::*;
 use voting_crypto::{
-    combine_shares, compute_nullifier, encrypt, fr_from_hex, fr_to_hex,
+    combine_shares, compute_nullifier, encrypt_with_randomness, fr_to_hex,
     generate_decryption_proof, generate_range_proof, generate_threshold_keypair,
-    g1_from_hex, solve_discrete_log, Ciphertext, HexChaumPedersenProof, HexCiphertext,
-    HexDisjunctiveRangeProof, HexKeyShare, KeyPair, PublicKey,
+    solve_discrete_log, HexChaumPedersenProof, HexCiphertext, HexDisjunctiveRangeProof,
+    HexKeyShare, KeyPair, PublicKey,
 };
-
-// Types matching Canister Candid interface
-#[derive(CandidType, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub enum ElectionPhase {
-    Setup,
-    Voting,
-    Tallying,
-    Complete,
-}
-
-#[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct Ballot {
-    pub nullifier: Vec<u8>,
-    pub ciphertext: HexCiphertext,
-    pub range_proof: HexDisjunctiveRangeProof,
-}
-
-#[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct EncryptedTally {
-    pub c1_hex: String,
-    pub c2_hex: String,
-    pub total_ballots: u64,
-}
-
-#[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct ElectionDetails {
-    pub title: String,
-    pub admin: Principal,
-    pub trustee_pk_hex: String,
-    pub phase: ElectionPhase,
-    pub start_time: u64,
-    pub end_time: u64,
-    pub registered_voters_count: u64,
-    pub total_ballots_cast: u64,
-    pub final_tally: Option<u64>,
-    pub proof_verified: bool,
-}
 
 #[derive(Parser)]
 #[command(name = "voting-cli")]
-#[command(about = "CLI tool for ICP BN254 ElGamal Zero-Knowledge Electronic Voting System", long_about = None)]
+#[command(about = "CLI & Verification Tool for Axum + Postgres Zero-Knowledge Electronic Voting System", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -72,19 +36,19 @@ enum Commands {
         total_shares: u64,
     },
 
-    /// Emergency Key Recovery: Combine n threshold key shares to reconstruct master secret key
+    /// Combine n threshold key shares to reconstruct master secret key
     CombineThresholdShares {
         #[arg(long, value_delimiter = ',')]
         shares: Vec<String>,
     },
 
-    /// Create and initialize an election on the ICP canister
+    /// Create and initialize an election on the Axum server
     CreateElection {
-        #[arg(long, default_value = "http://127.0.0.1:4943")]
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
         url: String,
 
         #[arg(long)]
-        canister_id: String,
+        admin_token: String,
 
         #[arg(long)]
         title: String,
@@ -92,71 +56,62 @@ enum Commands {
         #[arg(long)]
         trustee_pk: String,
 
-        #[arg(long, default_value = "0")]
-        start_time: u64,
+        #[arg(long)]
+        start_time: Option<u64>,
 
-        #[arg(long, default_value = "0")]
-        end_time: u64,
+        #[arg(long)]
+        end_time: Option<u64>,
     },
 
-    /// Register eligible voter principals on the canister
-    RegisterVoters {
-        #[arg(long, default_value = "http://127.0.0.1:4943")]
+    /// Issue single-use 128-bit voter credentials (admin only)
+    IssueCredentials {
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
         url: String,
 
         #[arg(long)]
-        canister_id: String,
+        admin_token: String,
 
-        #[arg(long, value_delimiter = ',')]
-        voters: Vec<String>,
+        #[arg(long, default_value = "5")]
+        count: u32,
     },
 
-    /// Transition election phase to OPEN for voting
+    /// Transition election phase to Voting (computes roll commitment)
     OpenVoting {
-        #[arg(long, default_value = "http://127.0.0.1:4943")]
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
         url: String,
 
         #[arg(long)]
-        canister_id: String,
+        admin_token: String,
     },
 
-    /// Encrypt vote (0 or 1), compute nullifier, generate ZK Range Proof, and submit ballot to canister
+    /// Cast an encrypted vote (0 or 1) with 1-out-of-2 ZK Range Proof
     CastVote {
-        #[arg(long, default_value = "http://127.0.0.1:4943")]
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
         url: String,
 
         #[arg(long)]
-        canister_id: String,
-
-        #[arg(long)]
-        trustee_pk: String,
-
-        #[arg(long)]
-        voter_secret: String,
-
-        #[arg(long)]
-        election_id: String,
+        credential_code: String,
 
         #[arg(long)]
         vote: u64,
     },
 
-    /// Transition election phase to TALLYING to close voting
+    /// Transition election phase to Tallying (closes voting)
     CloseVoting {
-        #[arg(long, default_value = "http://127.0.0.1:4943")]
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
         url: String,
 
         #[arg(long)]
-        canister_id: String,
+        admin_token: String,
     },
 
-    /// Single Trustee: fetch encrypted tally, decrypt via BSGS, generate Chaum-Pedersen ZK proof, and submit to canister
+    /// Single Trustee: fetch tally ciphertext, decrypt via BSGS, generate Chaum-Pedersen proof, and submit
     TallyDecryptAndProve {
-        #[arg(long, default_value = "http://127.0.0.1:4943")]
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
         url: String,
 
         #[arg(long)]
-        canister_id: String,
+        admin_token: String,
 
         #[arg(long)]
         trustee_sk: String,
@@ -165,13 +120,13 @@ enum Commands {
         max_bound: u64,
     },
 
-    /// Threshold Trustees: decrypt tally using n-of-m threshold key shares, generate Chaum-Pedersen ZK proof, and submit to canister
+    /// Threshold Trustees: decrypt tally using n-of-m threshold key shares, generate proof, and submit
     TallyDecryptThresholdAndProve {
-        #[arg(long, default_value = "http://127.0.0.1:4943")]
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
         url: String,
 
         #[arg(long)]
-        canister_id: String,
+        admin_token: String,
 
         #[arg(long, value_delimiter = ',')]
         shares: Vec<String>,
@@ -180,412 +135,313 @@ enum Commands {
         max_bound: u64,
     },
 
-    /// Query current status of election from canister
+    /// Query current status of election
     Status {
-        #[arg(long, default_value = "http://127.0.0.1:4943")]
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
         url: String,
-
-        #[arg(long)]
-        canister_id: String,
     },
-}
 
-async fn build_agent(url: &str) -> Result<Agent> {
-    let agent = Agent::builder()
-        .with_url(url)
-        .with_identity(AnonymousIdentity)
-        .build()
-        .context("Failed to build ic-agent")?;
-
-    // Fetch root key for local network
-    if url.contains("127.0.0.1") || url.contains("localhost") {
-        agent
-            .fetch_root_key()
-            .await
-            .context("Failed to fetch root key from local replica")?;
-    }
-
-    Ok(agent)
+    /// Independent bulletin board audit and tally verification
+    Verify {
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
+        url: String,
+    },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    let client = reqwest::Client::new();
 
     match cli.command {
         Commands::Keygen => {
             let mut rng = thread_rng();
             let keypair = KeyPair::generate(&mut rng);
-            let sk_hex = fr_to_hex(&keypair.sk);
-            let pk_hex = keypair.pk.to_hex();
-
-            println!("=== ElGamal KeyPair Generated (BN254 Curve) ===");
-            println!("Trustee Secret Key (sk): {}", sk_hex);
-            println!("Trustee Public Key (PK): {}", pk_hex);
-            println!("\n[SECURITY WARNING]: Store trustee secret key in a secure vault. Never share sk.");
+            println!("Single Trustee KeyPair Generated:");
+            println!("Public Key  (Hex G1): {}", keypair.pk.to_hex());
+            println!("Secret Key  (Hex Fr): {}", fr_to_hex(&keypair.sk));
         }
 
-        Commands::KeygenThreshold {
-            threshold,
-            total_shares,
-        } => {
+        Commands::KeygenThreshold { threshold, total_shares } => {
             let mut rng = thread_rng();
-            let tkp = generate_threshold_keypair(threshold, total_shares, &mut rng)
-                .context("Failed to generate threshold keypair")?;
-
-            println!("=== n-of-m Threshold ElGamal Setup (Shamir Secret Sharing) ===");
-            println!("Threshold (n): {}", tkp.threshold);
-            println!("Total Shares (m): {}", tkp.total_shares);
-            println!("Master Public Key (PK): {}", tkp.master_keypair.pk.to_hex());
-            println!("\n[TRUSTED DEALER SETUP NOTICE]: Distribute each key share below to its corresponding trustee.");
-            for share in &tkp.shares {
-                let hex_share = HexKeyShare::from_share(share);
-                println!(
-                    "  Trustee Share #{}: {}:{}",
-                    hex_share.index, hex_share.index, hex_share.share_hex
-                );
+            let tkp = generate_threshold_keypair(threshold, total_shares, &mut rng)?;
+            println!("Threshold Key Setup (Threshold {} of {}):", threshold, total_shares);
+            println!("Master Public Key: {}", tkp.master_keypair.pk.to_hex());
+            for share in tkp.shares {
+                let hex_share = HexKeyShare::from_share(&share);
+                let json = serde_json::to_string(&hex_share)?;
+                println!("Share {}: {}", share.index, json);
             }
         }
 
         Commands::CombineThresholdShares { shares } => {
-            eprintln!("[SECURITY WARNING]: 'combine-threshold-shares' reconstructs the master secret key sk in single-process memory.");
-            eprintln!("[SECURITY WARNING]: This creates a single point of key compromise. Use ONLY for emergency recovery scenarios.");
-            eprintln!("[SECURITY WARNING]: For standard threshold election tally decryption, use 'tally-decrypt-threshold-and-prove'.\n");
+            let parsed_shares = shares.iter().map(|s| {
+                let hex_share: HexKeyShare = serde_json::from_str(s)
+                    .map_err(|e| anyhow!("Failed to parse share JSON: {}", e))?;
+                hex_share.to_share()
+                    .map_err(|e| anyhow!("Failed to decode share: {}", e))
+            }).collect::<Result<Vec<_>>>()?;
 
-            let parsed_shares: Result<Vec<voting_crypto::KeyShare>, _> = shares
-                .iter()
-                .map(|s| {
-                    let parts: Vec<&str> = s.split(':').collect();
-                    if parts.len() != 2 {
-                        return Err(anyhow!("Share must be in format index:hex_string (e.g. 1:0x1234)"));
-                    }
-                    let index: u64 = parts[0].parse().context("Invalid share index")?;
-                    let share_fr = fr_from_hex(parts[1]).context("Invalid share scalar hex")?;
-                    Ok(voting_crypto::KeyShare {
-                        index,
-                        share: share_fr,
-                    })
-                })
-                .collect();
-
-            let parsed_shares = parsed_shares?;
-            let reconstructed_sk = combine_shares(&parsed_shares)
-                .context("Failed to combine threshold shares")?;
-            let keypair = KeyPair::from_sk(reconstructed_sk);
-
-            println!("=== Reconstructed Secret Key from {} Shares ===", parsed_shares.len());
-            println!("Reconstructed Secret Key (sk): {}", fr_to_hex(&reconstructed_sk));
-            println!("Derived Public Key (PK): {}", keypair.pk.to_hex());
+            let recovered_sk = combine_shares(&parsed_shares)?;
+            println!("Recovered Master Secret Key: {}", fr_to_hex(&recovered_sk));
         }
 
-        Commands::CreateElection {
-            url,
-            canister_id,
-            title,
-            trustee_pk,
-            start_time,
-            end_time,
-        } => {
-            let agent = build_agent(&url).await?;
-            let canister_principal = Principal::from_text(&canister_id)?;
-
-            let arg = candid::encode_args((title, trustee_pk, start_time, end_time))?;
-            let res_bytes = agent
-                .update(&canister_principal, "create_election")
-                .with_arg(arg)
-                .call_and_wait()
+        Commands::CreateElection { url, admin_token, title, trustee_pk, start_time, end_time } => {
+            let req = CreateElectionRequest {
+                title,
+                trustee_pk_hex: trustee_pk,
+                start_time,
+                end_time,
+            };
+            let res = client.post(format!("{}/api/v1/admin/election", url))
+                .header("Authorization", format!("Bearer {}", admin_token))
+                .json(&req)
+                .send()
                 .await?;
+            if !res.status().is_success() {
+                let err_text = res.text().await?;
+                return Err(anyhow!("Failed to create election: {}", err_text));
+            }
+            let details: ElectionDetailsResponse = res.json().await?;
+            println!("Election created successfully:");
+            println!("ID: {}", details.id);
+            println!("Title: {}", details.title);
+            println!("Phase: {:?}", details.phase);
+        }
 
-            let res: Result<String, String> = candid::decode_one(&res_bytes)?;
-            match res {
-                Ok(msg) => println!("Success: {}", msg),
-                Err(err) => eprintln!("Canister Error: {}", err),
+        Commands::IssueCredentials { url, admin_token, count } => {
+            let req = IssueCredentialsRequest { count };
+            let res = client.post(format!("{}/api/v1/admin/credentials", url))
+                .header("Authorization", format!("Bearer {}", admin_token))
+                .json(&req)
+                .send()
+                .await?;
+            if !res.status().is_success() {
+                let err_text = res.text().await?;
+                return Err(anyhow!("Failed to issue credentials: {}", err_text));
+            }
+            let resp: IssueCredentialsResponse = res.json().await?;
+            println!("Successfully issued {} credentials:", resp.count_issued);
+            println!("WARNING: {}", resp.warning);
+            for (i, code) in resp.credentials.iter().enumerate() {
+                println!("[{}] {}", i + 1, code);
             }
         }
 
-        Commands::RegisterVoters {
-            url,
-            canister_id,
-            voters,
-        } => {
-            let agent = build_agent(&url).await?;
-            let canister_principal = Principal::from_text(&canister_id)?;
-
-            let voter_principals: Result<Vec<Principal>, _> =
-                voters.iter().map(|s| Principal::from_str(s)).collect();
-            let voter_principals = voter_principals.context("Invalid voter principal string")?;
-
-            let arg = candid::encode_one(voter_principals)?;
-            let res_bytes = agent
-                .update(&canister_principal, "register_voters")
-                .with_arg(arg)
-                .call_and_wait()
+        Commands::OpenVoting { url, admin_token } => {
+            let res = client.post(format!("{}/api/v1/admin/open-voting", url))
+                .header("Authorization", format!("Bearer {}", admin_token))
+                .send()
                 .await?;
-
-            let res: Result<u64, String> = candid::decode_one(&res_bytes)?;
-            match res {
-                Ok(count) => println!("Successfully registered {} voters", count),
-                Err(err) => eprintln!("Canister Error: {}", err),
+            if !res.status().is_success() {
+                let err_text = res.text().await?;
+                return Err(anyhow!("Failed to open voting: {}", err_text));
             }
+            let resp: OpenVotingResponse = res.json().await?;
+            println!("Voting is now OPEN!");
+            println!("Roll Commitment (SHA-256): {}", resp.roll_commitment_hex);
+            println!("Voters Registered: {}", resp.credentials_issued);
         }
 
-        Commands::OpenVoting { url, canister_id } => {
-            let agent = build_agent(&url).await?;
-            let canister_principal = Principal::from_text(&canister_id)?;
-
-            let res_bytes = agent
-                .update(&canister_principal, "open_voting")
-                .with_arg(candid::encode_args(())?)
-                .call_and_wait()
+        Commands::CloseVoting { url, admin_token } => {
+            let res = client.post(format!("{}/api/v1/admin/close-voting", url))
+                .header("Authorization", format!("Bearer {}", admin_token))
+                .send()
                 .await?;
-
-            let res: Result<String, String> = candid::decode_one(&res_bytes)?;
-            match res {
-                Ok(msg) => println!("Success: {}", msg),
-                Err(err) => eprintln!("Canister Error: {}", err),
+            if !res.status().is_success() {
+                let err_text = res.text().await?;
+                return Err(anyhow!("Failed to close voting: {}", err_text));
             }
+            println!("Voting has been CLOSED. Phase is now Tallying.");
         }
 
-        Commands::CastVote {
-            url,
-            canister_id,
-            trustee_pk,
-            voter_secret,
-            election_id,
-            vote,
-        } => {
+        Commands::CastVote { url, credential_code, vote } => {
             if vote != 0 && vote != 1 {
-                return Err(anyhow!("Vote must be either 0 or 1"));
+                return Err(anyhow!("Vote must be 0 (No) or 1 (Yes)"));
             }
 
-            let agent = build_agent(&url).await?;
-            let canister_principal = Principal::from_text(&canister_id)?;
+            // Step 1: Login
+            let login_res = client.post(format!("{}/api/v1/voter/login", url))
+                .json(&VoterLoginRequest { credential_code: credential_code.clone() })
+                .send()
+                .await?;
+            if !login_res.status().is_success() {
+                let err_text = login_res.text().await?;
+                return Err(anyhow!("Voter login failed: {}", err_text));
+            }
+            let login: VoterLoginResponse = login_res.json().await?;
 
-            let pk = PublicKey::from_hex(&trustee_pk)?;
+            // Step 2: Fetch election details to get trustee public key
+            let election_res = client.get(format!("{}/api/v1/election", url)).send().await?;
+            let election: ElectionDetailsResponse = election_res.json().await?;
+
+            let trustee_pk = PublicKey::from_hex(&election.trustee_pk_hex)
+                .map_err(|e| anyhow!("Failed to parse trustee public key: {}", e))?;
+
+            // Step 3: Encrypt vote and generate range proof
             let mut rng = thread_rng();
+            let r = Fr::rand(&mut rng);
+            let ciphertext = encrypt_with_randomness(&trustee_pk, vote, &r);
+            let range_proof = generate_range_proof(&trustee_pk, &ciphertext, vote, &r, &mut rng)
+                .map_err(|e| anyhow!("Failed to generate range proof: {}", e))?;
 
-            // 1. Encrypt vote into BN254 ElGamal Ciphertext
-            let (ciphertext, r) = encrypt(&pk, vote, &mut rng);
-            let hex_ct = HexCiphertext::from_ciphertext(&ciphertext);
+            let nullifier = compute_nullifier(credential_code.as_bytes(), "default_election");
 
-            // 2. Generate 1-out-of-2 Disjunctive Chaum-Pedersen Zero-Knowledge Range Proof
-            let range_proof = generate_range_proof(&pk, &ciphertext, vote, &r, &mut rng)
-                .context("Failed to generate ZK range proof for ballot")?;
-            let hex_range_proof = HexDisjunctiveRangeProof::from_proof(&range_proof);
-
-            // 3. Compute voter nullifier
-            let nullifier = compute_nullifier(voter_secret.as_bytes(), &election_id);
-
-            let ballot = Ballot {
-                nullifier: nullifier.to_vec(),
-                ciphertext: hex_ct.clone(),
-                range_proof: hex_range_proof,
+            let ballot_req = SubmitBallotRequest {
+                nullifier_hex: hex::encode(nullifier),
+                ciphertext: HexCiphertext::from_ciphertext(&ciphertext),
+                range_proof: HexDisjunctiveRangeProof::from_proof(&range_proof),
             };
 
-            // 4. Submit ballot to canister
-            let arg = candid::encode_one(ballot)?;
-            let res_bytes = agent
-                .update(&canister_principal, "cast_ballot")
-                .with_arg(arg)
-                .call_and_wait()
+            // Step 4: Submit ballot
+            let submit_res = client.post(format!("{}/api/v1/ballots", url))
+                .header("Authorization", format!("Bearer {}", login.session_token))
+                .json(&ballot_req)
+                .send()
                 .await?;
-
-            let res: Result<String, String> = candid::decode_one(&res_bytes)?;
-            match res {
-                Ok(msg) => {
-                    println!("Ballot Cast & Verified Successfully!");
-                    println!("Nullifier (hex): {}", hex::encode(nullifier));
-                    println!("Encrypted Ballot (C1, C2):");
-                    println!("  C1: {}", hex_ct.c1_hex);
-                    println!("  C2: {}", hex_ct.c2_hex);
-                    println!("ZK Ballot Range Proof (1-out-of-2): GENERATED & VERIFIED ON-CHAIN");
-                    println!("Response: {}", msg);
-                }
-                Err(err) => eprintln!("Canister Error: {}", err),
+            if !submit_res.status().is_success() {
+                let err_text = submit_res.text().await?;
+                return Err(anyhow!("Ballot submission failed: {}", err_text));
             }
+            let receipt: BallotReceiptResponse = submit_res.json().await?;
+            println!("Ballot successfully cast and recorded on bulletin board!");
+            println!("Sequence Number: {}", receipt.sequence_number);
+            println!("Entry Hash:      {}", receipt.entry_hash);
+            println!("Chain Head Hash: {}", receipt.chain_head_hash);
+            println!("Nullifier:       {}", receipt.nullifier_hex);
         }
 
-        Commands::CloseVoting { url, canister_id } => {
-            let agent = build_agent(&url).await?;
-            let canister_principal = Principal::from_text(&canister_id)?;
+        Commands::TallyDecryptAndProve { url, admin_token, trustee_sk, max_bound } => {
+            let tally_res = client.get(format!("{}/api/v1/tally", url)).send().await?;
+            let tally: TallyCiphertextResponse = tally_res.json().await?;
 
-            let res_bytes = agent
-                .update(&canister_principal, "close_voting")
-                .with_arg(candid::encode_args(())?)
-                .call_and_wait()
-                .await?;
+            let sk = voting_crypto::fr_from_hex(&trustee_sk)
+                .context("Failed to parse trustee secret key")?;
+            let pk = PublicKey::new(G1Projective::generator() * sk);
 
-            let res: Result<String, String> = candid::decode_one(&res_bytes)?;
-            match res {
-                Ok(msg) => println!("Success: {}", msg),
-                Err(err) => eprintln!("Canister Error: {}", err),
-            }
-        }
+            let hex_ct = HexCiphertext { c1_hex: tally.c1_hex, c2_hex: tally.c2_hex };
+            let ct = hex_ct.to_ciphertext().map_err(|e| anyhow!("Failed to decode tally ciphertext: {}", e))?;
 
-        Commands::TallyDecryptAndProve {
-            url,
-            canister_id,
-            trustee_sk,
-            max_bound,
-        } => {
-            let agent = build_agent(&url).await?;
-            let canister_principal = Principal::from_text(&canister_id)?;
-
-            // 1. Fetch encrypted tally from canister
-            let query_bytes = agent
-                .query(&canister_principal, "get_encrypted_tally")
-                .with_arg(candid::encode_args(())?)
-                .call()
-                .await?;
-
-            let tally_res: Result<EncryptedTally, String> = candid::decode_one(&query_bytes)?;
-            let enc_tally = tally_res.map_err(|e| anyhow!("Failed to fetch encrypted tally: {}", e))?;
-
-            println!("Fetched Encrypted Tally Sum:");
-            println!("  C1_sum: {}", enc_tally.c1_hex);
-            println!("  C2_sum: {}", enc_tally.c2_hex);
-            println!("  Total Ballots Cast: {}", enc_tally.total_ballots);
-
-            let c1_sum = g1_from_hex(&enc_tally.c1_hex)?;
-            let c2_sum = g1_from_hex(&enc_tally.c2_hex)?;
-            let encrypted_sum = Ciphertext::new(c1_sum, c2_sum);
-
-            let sk = fr_from_hex(&trustee_sk)?;
-            let keypair = KeyPair::from_sk(sk);
-
-            // 2. Decrypt tally point W = sk * C1_sum, D = C2_sum - W
-            let w = c1_sum * sk;
-            let decrypted_point = c2_sum - w;
-
-            // 3. Solve discrete log using Baby-Step Giant-Step (BSGS)
-            println!("Solving discrete log M * G = D using BSGS algorithm...");
-            let tally = solve_discrete_log(&decrypted_point, max_bound)
-                .context("Failed to solve discrete log for encrypted tally sum")?;
-
-            println!("Decrypted Raw Tally Result: {} YES votes out of {} total ballots", tally, enc_tally.total_ballots);
-
-            // 4. Generate Chaum-Pedersen Zero-Knowledge Proof
-            println!("Generating Chaum-Pedersen Zero-Knowledge Proof of Decryption...");
-            let mut rng = thread_rng();
-            let proof = generate_decryption_proof(&sk, &keypair.pk, &encrypted_sum, tally, &mut rng);
-            let hex_proof = HexChaumPedersenProof::from_proof(&proof);
-
-            // 5. Submit proof to canister
-            let arg = candid::encode_one(hex_proof)?;
-            let res_bytes = agent
-                .update(&canister_principal, "submit_decryption_proof")
-                .with_arg(arg)
-                .call_and_wait()
-                .await?;
-
-            let res: Result<u64, String> = candid::decode_one(&res_bytes)?;
-            match res {
-                Ok(verified_tally) => {
-                    println!("\n=======================================================");
-                    println!("ELECTION TALLY VERIFIED AND FINALIZED ON-CHAIN!");
-                    println!("Verified Tally Result: {}", verified_tally);
-                    println!("Zero-Knowledge Decryption Proof: VALIDATED BY CANISTER");
-                    println!("=======================================================");
-                }
-                Err(err) => eprintln!("Canister Proof Rejection Error: {}", err),
-            }
-        }
-
-        Commands::TallyDecryptThresholdAndProve {
-            url,
-            canister_id,
-            shares,
-            max_bound,
-        } => {
-            let agent = build_agent(&url).await?;
-            let canister_principal = Principal::from_text(&canister_id)?;
-
-            let parsed_shares: Result<Vec<voting_crypto::KeyShare>, _> = shares
-                .iter()
-                .map(|s| {
-                    let parts: Vec<&str> = s.split(':').collect();
-                    if parts.len() != 2 {
-                        return Err(anyhow!("Share must be in format index:hex_string (e.g. 1:0x1234)"));
-                    }
-                    let index: u64 = parts[0].parse().context("Invalid share index")?;
-                    let share_fr = fr_from_hex(parts[1]).context("Invalid share scalar hex")?;
-                    Ok(voting_crypto::KeyShare {
-                        index,
-                        share: share_fr,
-                    })
-                })
-                .collect();
-
-            let parsed_shares = parsed_shares?;
-            println!("Reconstructing secret key from {} threshold shares...", parsed_shares.len());
-            let sk = combine_shares(&parsed_shares).context("Failed to combine threshold key shares")?;
-            let keypair = KeyPair::from_sk(sk);
-
-            // Fetch encrypted tally
-            let query_bytes = agent
-                .query(&canister_principal, "get_encrypted_tally")
-                .with_arg(candid::encode_args(())?)
-                .call()
-                .await?;
-
-            let tally_res: Result<EncryptedTally, String> = candid::decode_one(&query_bytes)?;
-            let enc_tally = tally_res.map_err(|e| anyhow!("Failed to fetch encrypted tally: {}", e))?;
-
-            let c1_sum = g1_from_hex(&enc_tally.c1_hex)?;
-            let c2_sum = g1_from_hex(&enc_tally.c2_hex)?;
-            let encrypted_sum = Ciphertext::new(c1_sum, c2_sum);
-
-            let w = c1_sum * sk;
-            let decrypted_point = c2_sum - w;
-
-            let tally = solve_discrete_log(&decrypted_point, max_bound)
-                .context("Failed to solve discrete log for encrypted tally sum")?;
+            println!("Decrypting homomorphic sum for {} ballots...", tally.total_ballots);
+            let decrypted_point = ct.c2 - (ct.c1 * sk);
+            let tally_result = solve_discrete_log(&decrypted_point, max_bound)
+                .map_err(|e| anyhow!("Failed to solve discrete logarithm within bound {}: {}", max_bound, e))?;
+            println!("Decrypted Tally: {}", tally_result);
 
             let mut rng = thread_rng();
-            let proof = generate_decryption_proof(&sk, &keypair.pk, &encrypted_sum, tally, &mut rng);
-            let hex_proof = HexChaumPedersenProof::from_proof(&proof);
+            let proof = generate_decryption_proof(&sk, &pk, &ct, tally_result, &mut rng);
+            let finalize_req = FinalizeTallyRequest {
+                proof: HexChaumPedersenProof::from_proof(&proof),
+            };
 
-            let arg = candid::encode_one(hex_proof)?;
-            let res_bytes = agent
-                .update(&canister_principal, "submit_decryption_proof")
-                .with_arg(arg)
-                .call_and_wait()
+            let fin_res = client.post(format!("{}/api/v1/admin/finalize-tally", url))
+                .header("Authorization", format!("Bearer {}", admin_token))
+                .json(&finalize_req)
+                .send()
                 .await?;
-
-            let res: Result<u64, String> = candid::decode_one(&res_bytes)?;
-            match res {
-                Ok(verified_tally) => {
-                    println!("\n=======================================================");
-                    println!("THRESHOLD TALLY VERIFIED AND FINALIZED ON-CHAIN!");
-                    println!("Verified Tally Result: {}", verified_tally);
-                    println!("Zero-Knowledge Decryption Proof: VALIDATED BY CANISTER");
-                    println!("=======================================================");
-                }
-                Err(err) => eprintln!("Canister Proof Rejection Error: {}", err),
+            if !fin_res.status().is_success() {
+                let err_text = fin_res.text().await?;
+                return Err(anyhow!("Failed to finalize tally: {}", err_text));
             }
+            let fin_resp: FinalizeTallyResponse = fin_res.json().await?;
+            println!("Tally successfully finalized and proved!");
+            println!("Final Phase: {:?}", fin_resp.phase);
+            println!("Verified Final Tally: {}", fin_resp.final_tally);
         }
 
-        Commands::Status { url, canister_id } => {
-            let agent = build_agent(&url).await?;
-            let canister_principal = Principal::from_text(&canister_id)?;
+        Commands::TallyDecryptThresholdAndProve { url, admin_token, shares, max_bound } => {
+            let parsed_shares = shares.iter().map(|s| {
+                let hex_share: HexKeyShare = serde_json::from_str(s)
+                    .map_err(|e| anyhow!("Failed to parse share JSON: {}", e))?;
+                hex_share.to_share()
+                    .map_err(|e| anyhow!("Failed to decode share: {}", e))
+            }).collect::<Result<Vec<_>>>()?;
 
-            let query_bytes = agent
-                .query(&canister_principal, "get_election_details")
-                .with_arg(candid::encode_args(())?)
-                .call()
+            let recovered_sk = combine_shares(&parsed_shares)?;
+            let pk = PublicKey::new(G1Projective::generator() * recovered_sk);
+
+            let tally_res = client.get(format!("{}/api/v1/tally", url)).send().await?;
+            let tally: TallyCiphertextResponse = tally_res.json().await?;
+
+            let hex_ct = HexCiphertext { c1_hex: tally.c1_hex, c2_hex: tally.c2_hex };
+            let ct = hex_ct.to_ciphertext().map_err(|e| anyhow!("Failed to decode tally ciphertext: {}", e))?;
+
+            println!("Reconstructed master key from threshold shares. Solving tally...");
+            let decrypted_point = ct.c2 - (ct.c1 * recovered_sk);
+            let tally_result = solve_discrete_log(&decrypted_point, max_bound)
+                .map_err(|e| anyhow!("Failed to solve discrete log: {}", e))?;
+            println!("Decrypted Tally: {}", tally_result);
+
+            let mut rng = thread_rng();
+            let proof = generate_decryption_proof(&recovered_sk, &pk, &ct, tally_result, &mut rng);
+            let finalize_req = FinalizeTallyRequest {
+                proof: HexChaumPedersenProof::from_proof(&proof),
+            };
+
+            let fin_res = client.post(format!("{}/api/v1/admin/finalize-tally", url))
+                .header("Authorization", format!("Bearer {}", admin_token))
+                .json(&finalize_req)
+                .send()
                 .await?;
+            if !fin_res.status().is_success() {
+                let err_text = fin_res.text().await?;
+                return Err(anyhow!("Failed to finalize tally: {}", err_text));
+            }
+            let fin_resp: FinalizeTallyResponse = fin_res.json().await?;
+            println!("Tally successfully finalized and verified via threshold reconstruction!");
+            println!("Final Tally: {}", fin_resp.final_tally);
+        }
 
-            let details: ElectionDetails = candid::decode_one(&query_bytes)?;
+        Commands::Status { url } => {
+            let res = client.get(format!("{}/api/v1/election", url)).send().await?;
+            let details: ElectionDetailsResponse = res.json().await?;
+            println!("========================================");
+            println!("Election:               {}", details.title);
+            println!("Phase:                  {:?}", details.phase);
+            println!("Trustee Public Key:     {}", details.trustee_pk_hex);
+            println!("Credentials Issued:     {}", details.credentials_issued_count);
+            println!("Credentials Used:       {}", details.credentials_used_count);
+            println!("Ballots in Bulletin:    {}", details.ballots_in_log_count);
+            println!("Chain Head Hash:        {}", details.chain_head_hash);
+            if let Some(tally) = details.final_tally {
+                println!("Final Tally:            {} (Proof Verified: {})", tally, details.proof_verified);
+            }
+            println!("========================================");
+        }
 
-            println!("=== Election Status ===");
-            println!("Title: {}", details.title);
-            println!("Admin: {}", details.admin);
-            println!("Trustee Public Key: {}", details.trustee_pk_hex);
-            println!("Phase: {:?}", details.phase);
-            println!("Registered Voters: {}", details.registered_voters_count);
-            println!("Total Ballots Cast: {}", details.total_ballots_cast);
-            println!("Final Tally: {:?}", details.final_tally);
-            println!("ZK Proof Verified: {}", details.proof_verified);
+        Commands::Verify { url } => {
+            println!("Auditing election from server {}...", url);
+            let election_res = client.get(format!("{}/api/v1/election", url)).send().await?;
+            let election: ElectionDetailsResponse = election_res.json().await?;
+
+            let bulletin_res = client.get(format!("{}/api/v1/bulletin", url)).send().await?;
+            let bulletin: BulletinLogResponse = bulletin_res.json().await?;
+
+            let tally_res = client.get(format!("{}/api/v1/tally", url)).send().await?;
+            let tally: TallyCiphertextResponse = tally_res.json().await?;
+
+            let report = verifier::audit_bulletin_and_tally(
+                &election,
+                &bulletin,
+                &tally,
+                None,
+            )?;
+
+            println!("============================================================");
+            println!("INDEPENDENT BULLETIN BOARD AUDIT CERTIFICATE");
+            println!("============================================================");
+            println!("Election Title:           {}", election.title);
+            println!("Election Phase:           {:?}", election.phase);
+            println!("Total Ballots Audited:    {}", report.total_ballots);
+            println!("Hash Chain Continuity:    VALID (SHA-256 chain intact from genesis)");
+            println!("ZK Range Proofs:          VALID (All ballots mathematically proven 0 or 1)");
+            println!("Homomorphic Sum:          MATCHES SERVER TALLY CIPHERTEXT");
+            if let Some(tally) = report.final_tally {
+                println!("Final Verified Tally:     {}", tally);
+            }
+            println!("============================================================");
+            println!("AUDIT RESULT: VERIFIED PASS (Zero discrepancies detected)");
+            println!("============================================================");
         }
     }
 

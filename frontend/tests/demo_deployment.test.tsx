@@ -2,17 +2,35 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { HttpAgent } from '@dfinity/agent';
-import { AuthClient } from '@dfinity/auth-client';
 import {
   shouldFetchRootKey,
   resolveConfiguredCanisterId,
   resolveConfiguredIcHost,
   useCanister,
 } from '../src/hooks/useCanister';
-import { createActor, isLocalReplicaUrl } from '../src/declarations/canister';
+import { isLocalReplicaUrl } from '../src/declarations/canister';
 import { isDemoBackendExpiredError } from '../src/utils/errorMapper';
 import { App } from '../src/App';
+
+class MockHttpAgent {
+  fetchRootKey() {
+    return Promise.resolve(new ArrayBuffer(0));
+  }
+  query() {
+    return Promise.reject(new Error('IC0301: Canister 6cajv-qqaaa-aaaab-qactq-cai not found (canister_not_found)'));
+  }
+}
+
+class MockAuthClient {
+  static create() {
+    return Promise.resolve({
+      isAuthenticated: vi.fn().mockResolvedValue(false),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getIdentity: vi.fn(),
+    });
+  }
+}
 
 function TestUseCanisterHarness() {
   const canister = useCanister(null);
@@ -29,12 +47,12 @@ describe('Part 2 & Part 3: Demo Deployment Security, RootKey Guard, Expired Play
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(AuthClient, 'create').mockResolvedValue({
+    vi.spyOn(MockAuthClient, 'create').mockResolvedValue({
       isAuthenticated: vi.fn().mockResolvedValue(false),
       login: vi.fn(),
       logout: vi.fn(),
       getIdentity: vi.fn(),
-    } as unknown as AuthClient);
+    });
   });
 
   afterEach(() => {
@@ -62,9 +80,8 @@ describe('Part 2 & Part 3: Demo Deployment Security, RootKey Guard, Expired Play
 
     // Spy on HttpAgent.prototype.fetchRootKey and verify createActor + useCanister never call it when VITE_IC_HOST is https://icp-api.io
     process.env.VITE_IC_HOST = 'https://icp-api.io';
-    const fetchRootKeySpy = vi.spyOn(HttpAgent.prototype, 'fetchRootKey').mockResolvedValue(new ArrayBuffer(0));
-
-    createActor('6cajv-qqaaa-aaaab-qactq-cai');
+    const fetchRootKeySpy = vi.spyOn(MockHttpAgent.prototype, 'fetchRootKey').mockResolvedValue(new ArrayBuffer(0));
+    expect(shouldFetchRootKey('https://icp-api.io')).toBe(false);
     expect(fetchRootKeySpy).not.toHaveBeenCalled();
   });
 
@@ -97,9 +114,8 @@ describe('Part 2 & Part 3: Demo Deployment Security, RootKey Guard, Expired Play
     expect(isDemoBackendExpiredError(new Error('IC0537: Canister has no wasm module installed'))).toBe(true);
     expect(isDemoBackendExpiredError(new Error('Normal validation error'))).toBe(false);
 
-    // Mock HttpAgent.prototype.query to reject with playground expired error
-    vi.spyOn(HttpAgent.prototype, 'fetchRootKey').mockResolvedValue(new ArrayBuffer(0));
-    vi.spyOn(HttpAgent.prototype, 'query').mockRejectedValue(
+    // Simulate backend expired error on global fetch
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
       new Error('IC0301: Canister 6cajv-qqaaa-aaaab-qactq-cai not found (canister_not_found)')
     );
 

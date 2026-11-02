@@ -1,6 +1,6 @@
-# Decentralized Electronic Voting System on Internet Computer Protocol (ICP)
+# Zero-Knowledge Electronic Voting System (Axum + PostgreSQL & React WASM)
 
-A production-quality, privacy-preserving, zero-knowledge electronic voting system built on the **Internet Computer Protocol (ICP)** using Rust, Candid, **BN254 ElGamal Homomorphic Encryption**, per-voter nullifiers, **1-out-of-2 Disjunctive Chaum-Pedersen Ballot Range Proofs**, **Shamir Secret Sharing (n-of-m) Threshold Custody**, and **Chaum-Pedersen Decryption Zero-Knowledge Proofs (NIZK DLEQ)**.
+A production-quality, privacy-preserving, zero-knowledge electronic voting system built with a **Rust Axum + PostgreSQL** backend (deployed on Render) and a **React + TypeScript + WebAssembly** frontend (deployed on Vercel), featuring **BN254 ElGamal Homomorphic Encryption**, per-voter nullifiers, **1-out-of-2 Disjunctive Chaum-Pedersen Ballot Range Proofs**, **Shamir Secret Sharing (n-of-m) Threshold Custody**, and **Chaum-Pedersen Decryption Zero-Knowledge Proofs (NIZK DLEQ)**.
 
 ---
 
@@ -14,26 +14,26 @@ A production-quality, privacy-preserving, zero-knowledge electronic voting syste
                                   |  - ZK Range Proof: 1-out-of-2 Disjunctive (m in {0,1})|
                                   |  - Nullifier: Keccak256(secret || election_id)        |
                                   |  - Tally Decryption: BSGS & Lagrange Interpolation    |
-                                  |  - ZK Proof: Chaum-Pedersen DLEQ via Fiat-Shamir      |
+                                  |  - Independent Audit: Verify bulletin board & proofs  |
                                   +---------------------------+---------------------------+
                                                               |
-                                                              | ic-agent (Candid RPC)
+                                                              | REST / JSON API (reqwest)
                                                               v
 +-------------------------------------------------------------------------------------------------------------------+
-|                                            ICP CANISTER SMART CONTRACT                                            |
+|                                        AXUM REST API + POSTGRESQL BACKEND                                         |
 |                                                                                                                   |
 |  Lifecycle Phases: Setup -------------------> Voting -------------------> Tallying -------------------> Complete   |
 |                    (Register Voters)        (Cast Ballots)              (Submit ZK Proof)           (Final Results) |
 |                                                                                                                   |
 |  State Machine & Security Enforcement:                                                                            |
-|   1. Phase & Timestamp Validation                                                                                 |
-|   2. Caller Principal Eligibility (Internet Identity)                                                             |
-|   3. Nullifier Uniqueness Check (Prevents Double-Voting)                                                             |
+|   1. Phase & Server-Clock Timestamp Validation                                                                    |
+|   2. Bearer Authentication & Single-Use Credential Code Authorization                                             |
+|   3. Unique Nullifier Constraint (Database-enforced double-vote rejection)                                        |
 |   4. BN254 G1 Curve-Membership Point Validation                                                                   |
 |   5. 1-out-of-2 Disjunctive Chaum-Pedersen ZK Range Proof Verification (Ensures m in {0,1})                       |
 |   6. Homomorphic Tally Accumulation: C_sum = sum(C_i)                                                            |
-|   7. On-Chain Chaum-Pedersen ZK Decryption Proof Verification                                                    |
-|   8. Pre/Post-Upgrade Hooks for ICP Stable Memory Persistence                                                     |
+|   7. Cryptographic Decryption Proof Verification via Chaum-Pedersen DLEQ                                          |
+|   8. Database Append-Only Bulletin Board Trigger (trg_bulletin_append_only blocks UPDATE & DELETE)                |
 +-------------------------------------------------------------------------------------------------------------------+
 ```
 
@@ -103,136 +103,97 @@ git config core.hooksPath .githooks
 
 ## 🚀 Building & Testing
 
-### 1. Run Pre-Push Verification Gate
+### 1. Run Unit & Cryptographic Test Suite
 ```bash
-# Linux/macOS
-./scripts/pre-push-check.sh
-
-# Windows PowerShell
-.\scripts\pre-push-check.ps1
+cargo test --package voting_crypto --package election_core --package cli --locked
 ```
 
-### 2. Run Unit & Cryptographic Test Suite
+### 2. Run Server Integration Tests (Axum + PostgreSQL)
 ```bash
-cargo test --package voting_crypto --package cli --locked
+# Set your PostgreSQL test database URL
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/voting_test"
+cargo test --package server --test server_tests -- --test-threads=1
 ```
 
-### 3. Build Wasm Canister & CLI Binary
-```bash
-cargo build --package canister --target wasm32-unknown-unknown --release --locked
-cargo build --package cli --release --locked
-```
-
-### 4. Build & Test Web Frontend (React + Vite + TypeScript)
+### 3. Build Web Frontend (React + Vite + TypeScript + WASM)
 ```bash
 cd frontend
-npm install
-npm test        # Runs Vitest Candid & IDL interface test suite
-npm run build   # Production TypeScript & Vite bundle compilation
+npm ci
+npm test        # Runs Vitest unit & component security suite
+npm run build   # Production bundle compilation into dist/
 npm run dev     # Start local development server on http://localhost:3000
 ```
 
+### 4. Run Playwright E2E & Accessibility Suite
+```bash
+cd frontend
+npm run build:e2e
+npx playwright test
+```
+
 ---
 
-## 💻 Local ICP Deployment (WSL2) & Mock Election Walkthrough
-
-*Historical Verification Note*: In earlier phases of this project on the Windows ARM64 host, all `dfx`-dependent verification ran exclusively inside GitHub Actions Ubuntu runners. With WSL2 (`Ubuntu` on `aarch64`) and `dfx 0.29.0` installed on the WSL-native ext4 filesystem (`/home/akhil/voting`), local replica and asset canister deployment can also be run directly via WSL2. Note that `dfx start --background` in WSL2 is tied to the lifetime of the originating Linux session unless kept open in an interactive terminal or detached via `setsid`.
+## 💻 Local Axum + PostgreSQL Deployment & CLI Walkthrough
 
 ```bash
-# 1. Start Local Replica (use dfx 0.29.0 on WSL2 aarch64)
-dfx start --background --clean
+# 1. Run PostgreSQL locally or via Docker
+docker run -d --name voting-db -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=voting -p 5432:5432 postgres:16
 
-# 2. Deploy Backend & Frontend Asset Canisters
-dfx deploy
+# 2. Run Database Migrations and Start Axum Server
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/voting"
+export ADMIN_TOKEN="your_secure_admin_token"
+export BIND_ADDR="127.0.0.1:8080"
+cargo run -p server
 
-# 3A. Generate Single Trustee Key
+# 3A. Generate Single Trustee Keypair
 cargo run -p cli -- keygen
 
-# 3B. OR Generate n-of-m Threshold Trustee Keys (e.g., 3-of-5)
+# 3B. OR Generate n-of-m Shamir Threshold Trustee Keys (e.g., 3-of-5)
 cargo run -p cli -- keygen-threshold --threshold 3 --total-shares 5
 
 # 4. Create Election
-cargo run -p cli -- create-election --canister-id "<CANISTER_ID>" --title "2026 Referendum" --trustee-pk "<MASTER_PK>"
+cargo run -p cli -- create-election --api-url "http://127.0.0.1:8080" --admin-token "$ADMIN_TOKEN" --title "2026 Referendum" --trustee-pk "<MASTER_PK>"
 
-# 5. Register Voters
-cargo run -p cli -- register-voters --canister-id "<CANISTER_ID>" --voters "2vxsx-fae"
+# 5. Register Voters or Issue Single-Use Credential Codes
+cargo run -p cli -- register-voters --api-url "http://127.0.0.1:8080" --admin-token "$ADMIN_TOKEN" --voters "voter_1,voter_2"
 
 # 6. Open Voting
-cargo run -p cli -- open-voting --canister-id "<CANISTER_ID>"
+cargo run -p cli -- open-voting --api-url "http://127.0.0.1:8080" --admin-token "$ADMIN_TOKEN"
 
-# 7. Cast Encrypted Ballots (Generates & Verifies ZK Range Proof On-Chain)
-cargo run -p cli -- cast-vote --canister-id "<CANISTER_ID>" --trustee-pk "<MASTER_PK>" --voter-secret "secret_1" --election-id "ref_2026" --vote 1
+# 7. Cast Encrypted Ballot (ZK Range Proof Verified by Server)
+cargo run -p cli -- cast-vote --api-url "http://127.0.0.1:8080" --trustee-pk "<MASTER_PK>" --voter-secret "secret_1" --election-id "<ELECTION_ID>" --vote 1
 
 # 8. Close Voting
-cargo run -p cli -- close-voting --canister-id "<CANISTER_ID>"
+cargo run -p cli -- close-voting --api-url "http://127.0.0.1:8080" --admin-token "$ADMIN_TOKEN"
 
 # 9. Tally Decryption via 3 Threshold Shares
-cargo run -p cli -- tally-decrypt-threshold-and-prove --canister-id "<CANISTER_ID>" --shares "1:0x...,3:0x...,5:0x..."
+cargo run -p cli -- tally-decrypt-threshold-and-prove --api-url "http://127.0.0.1:8080" --election-id "<ELECTION_ID>" --shares "1:0x...,3:0x...,5:0x..."
+
+# 10. Independent Bulletin Board Audit
+cargo run -p cli -- audit --api-url "http://127.0.0.1:8080" --election-id "<ELECTION_ID>"
 ```
 
 ---
 
-## ⚠️ Security Limitations & Architectural Roadmap
+## 🌐 Cloud Deployment Architecture (Render + Vercel)
 
-1. **Ballot Range Validation [RESOLVED IN v0.2.0]**:
-   - Every ballot is verified on-chain via a **1-out-of-2 Disjunctive Chaum-Pedersen Zero-Knowledge Range Proof**. Ballots not strictly encoding 0 or 1 are rejected.
+The system deploys natively across two free/standard tiers:
+1. **Backend (Render)**: Axum API server deployed as a Docker Web Service with managed PostgreSQL via `render.yaml`.
+2. **Frontend (Vercel)**: React + TypeScript + WebAssembly frontend deployed with immutable client build via `frontend/vercel.json`.
 
-2. **Trustee Key Custody [INTERIM SHAMIR THRESHOLD RESOLVED IN v0.3.0]**:
-   - *Implemented Interim Scheme*: $n$-of-$m$ Shamir's Secret Sharing over scalar field $\mathbb{F}_q$. A trusted dealer setup (`cli keygen-threshold`) generates master public key $PK$ and $m$ threshold key shares. Any $n$ trustee shares can reconstruct $sk$ or combine partial decryption factors $W = \sum \lambda_i W_i = sk \cdot C_1$ via Lagrange interpolation.
-   - *Emergency Key Recovery Notice*: The `combine-threshold-shares` command reconstructs $sk$ in single-process memory. It prints a prominent security warning banner and is intended strictly for emergency dealer recovery.
-   - *Security Assumption*: Key generation uses a trusted dealer setup. In production deployments, this should be replaced with a non-interactive Distributed Key Generation (DKG) protocol or ICP native `vetKeys` to eliminate the setup dealer centralization point.
+### 1. Render Blueprint (`render.yaml`)
 
-3. **Coercion & Vote-Selling [OUT OF SCOPE]**:
-   - System does not prevent coercion. A voter can prove their vote by revealing randomness $r$.
+The repository includes a root `render.yaml` declaring:
+- Web Service `voting-system-api`: Docker runtime, health check at `/health`, auto-wired `DATABASE_URL` from the managed database, and auto-generated `ADMIN_TOKEN`.
+- Managed PostgreSQL `voting-system-db`: PostgreSQL 16 on Render's managed tier.
 
-4. **Client-Side Device Compromise [OUT OF SCOPE]**:
-   - Malware on a voter's machine altering votes before encryption cannot be solved on-chain.
+### 2. Honest Trust Model & Operational Constraints
 
-5. **Cryptographic Randomness**:
-   - Client-side encryption relies on OS CSPRNG (`rand::thread_rng()`).
-
----
-
-## 🌐 Demo deployment (temporary)
-
-A short-lived public demo can be deployed using the **ICP Playground** for the Rust backend canister (`dfx deploy canister --playground`) and **Vercel** for the React/TypeScript/WASM frontend (`frontend/vercel.json`).
-
-### 1. How to Redeploy the Public Demo (`scripts/deploy_demo.sh`)
-
-```bash
-export VERCEL_TOKEN="<your_vercel_personal_access_token>"
-chmod +x scripts/deploy_demo.sh
-./scripts/deploy_demo.sh
-```
-
-What `scripts/deploy_demo.sh` executes:
-1. Verifies required CLI tools (`dfx`, `node`, `npm`, `vercel`) and `VERCEL_TOKEN`.
-2. Compiles `canister` to `wasm32-unknown-unknown` and runs `dfx deploy canister --playground`.
-3. Extracts and validates the newly assigned Playground Canister Principal ID and runs a smoke query (`get_election_details`).
-4. Builds `frontend/dist/` with build-time environment variables (`VITE_CANISTER_ID=<PLAYGROUND_ID>` and `VITE_IC_HOST=https://icp-api.io`).
-5. Runs the production grep gate on `frontend/dist/` to guarantee zero test-bypass markers (`test_auth`, `ENABLE_E2E_TEST_BYPASS`) ship in the bundle.
-6. Deploys the frontend to Vercel (`vercel deploy --prod --yes`) and verifies HTTP status + CSP/WASM headers.
-
-*Browser-WASM Packaging Note*: The compiled browser WebAssembly cryptography module (`frontend/src/crypto/pkg/voting_crypto_wasm_bg.wasm` and its generated `wasm-bindgen` TypeScript/JS glue) is committed in the repository so Vercel's build container (or a local `npm run build` followed by `vercel deploy --prebuilt --prod`) does not require `rustc` or `wasm-pack` at deploy time.
-
-### 2. Why the Demo Expires After ~20 Minutes
-
-- Canisters deployed via `dfx deploy --playground` borrow a temporary canister slot from the shared ICP Playground pool with a strict **20-minute time-to-live (TTL)**.
-- Once the 20-minute window elapses, the playground pool automatically uninstalls/reclaims the canister and **all election state is permanently wiped**.
-- Every subsequent `dfx deploy canister --playground` assigns a new Canister ID, requiring the frontend to be rebuilt/redeployed with the updated `VITE_CANISTER_ID`.
-- When the playground backend expires, the UI automatically transitions into the `[DEMO BACKEND EXPIRED OR NOT INSTALLED]` state with redeploy instructions.
-
-### 3. Why Internet Identity Principals Differ by Frontend Origin
-
-- By design, Internet Identity (`https://identity.ic0.app`) derives a distinct, origin-scoped pseudonymous Principal ID for each frontend origin (`https://<your-deployment>.vercel.app` vs. `http://localhost:3000`).
-- **Operational Requirement**: Voters and administrators must sign in on the **stable production Vercel alias** (`*.vercel.app`), copy the Principal ID shown in the navigation bar, and register that exact origin-derived Principal ID in the Election Administration portal (`/admin`). Preview deployment URLs have different origins and therefore produce different Internet Identity principals unless `derivationOrigin` is configured with `/.well-known/ii-alternative-origins`.
-
-### 4. Honest Demo & Trust-Model Limitations
-
-- **Unaudited Reference Codebase**: Neither the Rust BN254 cryptographic primitives nor the canister/frontend code have undergone an independent third-party cryptographic audit.
-- **20-Minute Ephemeral Backend**: All elections, voter registries, ballots, and tallies on the ICP Playground are deleted after ~20 minutes.
-- **Single-Dealer Threshold Key Setup**: The $n$-of-$m$ Shamir secret sharing ceremony uses a single dealer in browser WASM or CLI memory during setup rather than a distributed key generation (DKG) protocol.
-- **No Coercion Resistance or Receipt-Freeness**: Voters who disclose their secret passphrase or randomness can prove how they voted to a third party.
-- **Client-Device Compromise Out of Scope**: Browser extensions or endpoint malware can read or alter a vote before WebAssembly encryption occurs.
-- **Frontend Host Operator Trust Boundary (Vercel vs. ICP Asset Canister)**: When the frontend is served from Vercel rather than an ICP certified asset canister, the Vercel project operator controls the JavaScript and WebAssembly bundle delivered to voters' browsers and could theoretically serve modified client code that exfiltrates plaintext choices before encryption.
+1. **Operator-Controlled Eligibility**: In this architecture, the server administrator issues single-use credential codes or registers eligible voter IDs. The server operator acts as the gatekeeper of voter registration.
+2. **Append-Only Bulletin Board Integrity**: The bulletin board is stored in PostgreSQL. Immutability is enforced at the database level by the `trg_bulletin_append_only` trigger, which unconditionally rejects any `UPDATE` or `DELETE` statement. Cryptographic auditability is verified by the CLI client (`cli audit`), which independently re-checks the SHA-256 hash chain, range proofs, nullifiers, and tally sum.
+3. **Render Free Tier Cold Starts**: Render's free web service spins down after 15 minutes of inactivity. The first request after idle takes approximately 50-60 seconds. The frontend includes responsive health checking, a connection indicator, and automated retry polling.
+4. **Render Free Database TTL**: Render's free PostgreSQL instance expires 30 days after creation. For permanent production use, upgrade to a persistent paid database instance.
+5. **Client-Side Cryptography**: All ballot encryption and zero-knowledge proofs are generated in the voter's browser using client-side WebAssembly (`voting_crypto_wasm`). Plaintext votes never touch the network or the backend database.
+6. **No Coercion Resistance**: Voters who voluntarily reveal their private voter secret or encryption randomness $r$ can prove how they voted to an outside party.
+7. **Client-Device Integrity**: If a voter's machine or browser is compromised with malware or hostile browser extensions, the vote could be observed or altered before client-side encryption.
 

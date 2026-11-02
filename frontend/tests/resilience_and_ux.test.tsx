@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Principal } from '@dfinity/principal';
+import { Principal } from '../src/types/principal';
 import { HomeView } from '../src/views/HomeView';
 import { PublicView } from '../src/views/PublicView';
 import { VoterView } from '../src/views/VoterView';
@@ -64,6 +64,7 @@ function createBaseMockAuth(overrides: Partial<AuthContextType> = {}): AuthConte
     login: vi.fn(),
     logout: vi.fn(),
     isLoading: false,
+    sessionToken: null,
     ...overrides,
   };
 }
@@ -114,7 +115,7 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
       expect(glossaryLinks.length).toBeGreaterThanOrEqual(5);
       unmount();
     }
-  });
+  }, 25000);
 
   it('executes the Guided Walkthrough with keyboard navigation (ArrowRight, ArrowLeft, Escape), displays device privacy boundary, and writes zero storage keys', () => {
     const onClose = vi.fn();

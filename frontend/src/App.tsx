@@ -139,7 +139,7 @@ export function App() {
                 <strong>[SESSION EXPIRED]:</strong> Your Internet Identity delegation has expired. You have been returned
                 to a signed-out state. Reconnect when ready.
               </span>
-              <button type="button" className="btn btn-primary btn-sm" onClick={auth.login}>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => void auth.login()}>
                 Re-Authenticate Now
               </button>
             </div>

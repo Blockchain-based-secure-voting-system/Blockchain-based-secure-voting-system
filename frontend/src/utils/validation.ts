@@ -1,4 +1,4 @@
-import { Principal } from '@dfinity/principal';
+import { Principal } from '../types/principal';
 
 export interface ValidationResult {
   valid: boolean;
@@ -12,6 +12,10 @@ export function validatePrincipalText(input: string): ValidationResult {
   const trimmed = input.trim();
   if (!trimmed) {
     return { valid: false, error: 'Principal ID cannot be empty.' };
+  }
+  // Standard textual principal format: lowercase alphanumeric with hyphen separators
+  if (!/^[a-z0-9]{3,63}(-[a-z0-9]{3,63})*$/.test(trimmed) && trimmed !== '2vxsx-fae') {
+    return { valid: false, error: `Invalid Principal ID format: "${trimmed.slice(0, 32)}".` };
   }
   try {
     Principal.fromText(trimmed);

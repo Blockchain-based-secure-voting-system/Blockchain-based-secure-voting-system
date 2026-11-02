@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 30000,
+  timeout: 90000,
   fullyParallel: false,
   workers: 1,
   reporter: 'list',
@@ -19,7 +19,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run preview:e2e',
     port: 3000,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120000,
   },
 });

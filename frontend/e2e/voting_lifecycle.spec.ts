@@ -219,7 +219,7 @@ test.describe('ICP Zero-Knowledge Voting UI, Full Lifecycle, IA Routes, Walkthro
       const data = req.postData!;
       validateZeroPlaintextLeakage(data);
 
-      if (data.includes('cast_ballot') || req.url.includes('/call')) {
+      if (data.includes('cast_ballot') || req.url.includes('/call') || req.url.includes('/ballots')) {
         ballotRequestFound = true;
       }
     }

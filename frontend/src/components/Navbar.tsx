@@ -83,10 +83,11 @@ export const Navbar: React.FC<NavbarProps> = ({
         <nav className="role-tabs" aria-label="Primary Navigation">
           {NAV_ITEMS.map((item) => {
             const isActive = currentPath === item.path;
+            const search = typeof window !== 'undefined' ? window.location.search : '';
             return (
               <a
                 key={item.path}
-                href={item.path}
+                href={`${item.path}${search}`}
                 className={`role-tab-btn ${isActive ? 'active' : ''}`}
                 aria-current={isActive ? 'page' : undefined}
                 style={{ textDecoration: 'none' }}
@@ -139,7 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
           ) : (
-            <button type="button" className="btn btn-primary btn-sm" onClick={auth.login}>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => void auth.login()}>
               <LogIn size={14} aria-hidden="true" /> Internet Identity
             </button>
           )}

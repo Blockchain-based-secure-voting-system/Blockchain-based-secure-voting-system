@@ -5,7 +5,6 @@ import initWasm, {
   generate_voter_ballot,
   verify_ballot_range_proof,
 } from './pkg/voting_crypto_wasm.js';
-import { ENABLE_E2E_TEST_BYPASS } from '../config/buildFlags.json';
 
 export interface WasmBallot {
   nullifier: number[];
@@ -70,35 +69,8 @@ export async function createClientSideBallot(
   electionId: string,
   vote: 0 | 1
 ): Promise<WasmBallot> {
-  try {
-    await ensureCryptoInitialized();
-    const res = generate_voter_ballot(masterPkHex, voterSecret, electionId, vote) as WasmBallot;
-    return res;
-  } catch (err) {
-    if (ENABLE_E2E_TEST_BYPASS) {
-      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('test_auth') === 'true') {
-        const nullifier = Array.from(new Uint8Array(32).fill(42));
-        return {
-          nullifier,
-          ciphertext: {
-            c1_hex: '0x22be268019741f2fafe7cb402b489d701026dfa7ce9e585fdfdb4efea1211e4006c9aeb3d15bf0133c9dfddb5eb970081bf584b248a318182b8a4f91e92d83b4',
-            c2_hex: '0x1cf9e3346e9dfd6e469c84e1b6f007914f6bdf1a070eb358178d8a572a1e05fe00a2608ecbe3d578b94541cb91176b6ef26e5e8e8fbafabf2f63fa9ae7f5ef3a',
-          },
-          range_proof: {
-            a0_hex: '0x01',
-            b0_hex: '0x02',
-            a1_hex: '0x03',
-            b1_hex: '0x04',
-            c0_hex: '0x05',
-            c1_hex: '0x06',
-            s0_hex: '0x07',
-            s1_hex: '0x08',
-          },
-        };
-      }
-    }
-    throw err;
-  }
+  await ensureCryptoInitialized();
+  return generate_voter_ballot(masterPkHex, voterSecret, electionId, vote) as WasmBallot;
 }
 
 /**
@@ -110,17 +82,8 @@ export async function verifyClientRangeProof(
   c2Hex: string,
   rangeProof: unknown
 ): Promise<boolean> {
-  try {
-    await ensureCryptoInitialized();
-    return verify_ballot_range_proof(masterPkHex, c1Hex, c2Hex, rangeProof);
-  } catch (err) {
-    if (ENABLE_E2E_TEST_BYPASS) {
-      if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('test_auth') === 'true') {
-        return true;
-      }
-    }
-    throw err;
-  }
+  await ensureCryptoInitialized();
+  return verify_ballot_range_proof(masterPkHex, c1Hex, c2Hex, rangeProof);
 }
 
 /**
@@ -150,7 +113,11 @@ export async function combineKeyShares(
   shares: Array<{ index: number; share_hex: string }>
 ): Promise<string> {
   await ensureCryptoInitialized();
-  return combine_threshold_shares_wasm(shares);
+  const cleanShares = shares.map((s) => ({
+    index: s.index,
+    share_hex: s.share_hex.startsWith('0x') || s.share_hex.startsWith('0X') ? s.share_hex.slice(2) : s.share_hex,
+  }));
+  return combine_threshold_shares_wasm(cleanShares);
 }
 
 /**
@@ -163,5 +130,8 @@ export async function decryptAndProveTally(
   maxBound: number = 10000
 ): Promise<WasmDecryptionResult> {
   await ensureCryptoInitialized();
-  return decrypt_and_prove_tally_wasm(skHex, c1SumHex, c2SumHex, BigInt(maxBound)) as WasmDecryptionResult;
+  const cleanSk = skHex.startsWith('0x') || skHex.startsWith('0X') ? skHex.slice(2) : skHex;
+  const cleanC1 = c1SumHex.startsWith('0x') || c1SumHex.startsWith('0X') ? c1SumHex.slice(2) : c1SumHex;
+  const cleanC2 = c2SumHex.startsWith('0x') || c2SumHex.startsWith('0X') ? c2SumHex.slice(2) : c2SumHex;
+  return decrypt_and_prove_tally_wasm(cleanSk, cleanC1, cleanC2, BigInt(maxBound)) as WasmDecryptionResult;
 }

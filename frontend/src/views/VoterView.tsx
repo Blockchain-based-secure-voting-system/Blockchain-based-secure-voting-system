@@ -150,12 +150,12 @@ export const VoterView: React.FC<{
         throw new Error('Local client-side ZK range proof validation failed.');
       }
 
-      // 2. Transmit Encrypted Ballot to Canister
+      // 2. Transmit Encrypted Ballot to Server
       await castBallot({
         nullifier: wasmBallot.nullifier,
         ciphertext: wasmBallot.ciphertext,
         range_proof: wasmBallot.range_proof,
-      });
+      }, voterSecret);
 
       const nullifierHex = Array.from(wasmBallot.nullifier)
         .map((b) => b.toString(16).padStart(2, '0'))

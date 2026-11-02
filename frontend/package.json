@@ -1,5 +1,5 @@
 {
-  "name": "icp-secure-voting-frontend",
+  "name": "secure-voting-frontend",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -16,10 +16,6 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@dfinity/agent": "^2.1.3",
-    "@dfinity/auth-client": "^2.1.3",
-    "@dfinity/candid": "^2.1.3",
-    "@dfinity/principal": "^2.1.3",
     "clsx": "^2.1.1",
     "lucide-react": "^0.475.0",
     "react": "^18.3.1",

@@ -1,9 +1,6 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { HttpAgent } from '@dfinity/agent';
-import { Principal } from '@dfinity/principal';
-import { createActor, canisterId as defaultCanisterId, isLocalReplicaUrl } from '../declarations/canister';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Principal, type Identity } from '../types/principal';
 import type { ElectionDetails, EncryptedTally, Ballot, HexChaumPedersenProof } from '../declarations/canister/canister.did';
-import type { Identity } from '@dfinity/agent';
 import { ENABLE_E2E_TEST_BYPASS } from '../config/buildFlags.json';
 import { mapToSafeErrorMessage, isDemoBackendExpiredError } from '../utils/errorMapper';
 
@@ -20,7 +17,7 @@ export interface UseCanisterReturn {
   createElection: (title: string, trusteePkHex: string, startTime: bigint, endTime: bigint) => Promise<string>;
   registerVoters: (voters: Principal[]) => Promise<bigint>;
   openVoting: () => Promise<string>;
-  castBallot: (ballot: Ballot) => Promise<string>;
+  castBallot: (ballot: Ballot, credentialCode?: string) => Promise<string>;
   closeVoting: () => Promise<string>;
   submitDecryptionProof: (proof: HexChaumPedersenProof) => Promise<bigint>;
   isVoterRegistered: (principal: Principal) => Promise<boolean>;
@@ -28,42 +25,46 @@ export interface UseCanisterReturn {
   hasNullifierBeenUsed: (nullifier: Uint8Array | number[]) => Promise<boolean>;
 }
 
-function isE2EBypassActive(): boolean {
-  if (!ENABLE_E2E_TEST_BYPASS) return false;
-  if (typeof window === 'undefined') return false;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('live_replica') === 'true') return false;
-  return params.get('test_auth') === 'true';
+export function isLocalReplicaUrl(hostUrl: string): boolean {
+  try {
+    const parsed = new URL(hostUrl);
+    return (
+      parsed.hostname === '127.0.0.1' ||
+      parsed.hostname === 'localhost' ||
+      parsed.hostname === '::1' ||
+      parsed.hostname === '[::1]'
+    );
+  } catch {
+    return false;
+  }
 }
 
-function isLocalReplicaHost(): boolean {
-  return typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+export function resolveConfiguredApiUrl(): string {
+  const envMeta = (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string | undefined> }).env) || {};
+  const fromEnv =
+    (typeof process !== 'undefined' ? process?.env?.VITE_API_URL : undefined) ||
+    envMeta.VITE_API_URL;
+  if (fromEnv && fromEnv.trim().length > 0) {
+    return fromEnv.trim().replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://127.0.0.1:8080';
+  }
+  return 'https://blockchain-voting-api.onrender.com';
 }
 
-/**
- * Resolves the target IC host strictly from build-time environment variables (VITE_IC_HOST),
- * falling back to http://127.0.0.1:4943 on localhost or https://icp-api.io in production.
- * Never reads host from URL parameters or user-supplied input.
- */
 export function resolveConfiguredIcHost(explicitEnvHost?: string): string {
   const envMeta = (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string | undefined> }).env) || {};
   const configured =
     explicitEnvHost ??
     (typeof process !== 'undefined' ? process?.env?.VITE_IC_HOST : undefined) ??
     envMeta.VITE_IC_HOST;
-
   if (configured && configured.trim().length > 0) {
     return configured.trim();
   }
-  return isLocalReplicaHost() ? 'http://127.0.0.1:4943' : 'https://icp-api.io';
+  return 'http://127.0.0.1:8080';
 }
 
-/**
- * Resolves the target canister ID strictly from build-time environment variables
- * (VITE_CANISTER_ID or VITE_CANISTER_ID_CANISTER) or defaultCanisterId.
- * Never accepts a canister ID from window.location.search or any URL parameter,
- * preventing phishing links from pointing the UI at a malicious canister.
- */
 export function resolveConfiguredCanisterId(customCanisterId?: string): string {
   if (customCanisterId && customCanisterId.trim().length > 0) {
     return customCanisterId.trim();
@@ -73,20 +74,26 @@ export function resolveConfiguredCanisterId(customCanisterId?: string): string {
     (typeof process !== 'undefined' ? process?.env?.VITE_CANISTER_ID || process?.env?.CANISTER_ID_CANISTER : undefined) ||
     envMeta.VITE_CANISTER_ID ||
     envMeta.VITE_CANISTER_ID_CANISTER;
-
-  return (fromEnv && fromEnv.trim()) || defaultCanisterId || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
+  return (fromEnv && fromEnv.trim()) || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
 }
 
-/**
- * Security Guard: Determines whether agent.fetchRootKey() is permitted for the given host.
- * Returns true ONLY for local replica hosts (127.0.0.1, localhost, ::1).
- * Never allows fetchRootKey() on mainnet or playground hosts (https://icp-api.io, https://icp0.io, etc.).
- */
 export function shouldFetchRootKey(host: string): boolean {
   return isLocalReplicaUrl(host);
 }
 
-export function useCanister(identity: Identity | null, customCanisterId?: string): UseCanisterReturn {
+function isE2EBypassActive(): boolean {
+  if (!ENABLE_E2E_TEST_BYPASS) return false;
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('live_backend') === 'true' || params.get('live_replica') === 'true') return false;
+  if (params.get('test_auth') === 'true') {
+    (window as any).__E2E_TEST_AUTH__ = true;
+    return true;
+  }
+  return (window as any).__E2E_TEST_AUTH__ === true;
+}
+
+export function useCanister(_identity: Identity | null, _customCanisterId?: string): UseCanisterReturn {
   const [electionDetails, setElectionDetails] = useState<ElectionDetails | null>(null);
   const [encryptedTally, setEncryptedTally] = useState<EncryptedTally | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -94,292 +101,358 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
   const [isDemoExpired, setIsDemoExpired] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Simulated E2E state only used when ENABLE_E2E_TEST_BYPASS is true AND live_replica is not active
   const e2eStateRef = useRef<{
     details: ElectionDetails;
     tally: EncryptedTally;
-    voters: Set<string>;
-    nullifiers: Set<string>;
-  } | null>(
-    ENABLE_E2E_TEST_BYPASS
-      ? {
-          details: {
-            title: 'E2E Automated Test Election',
-            admin: Principal.fromText('bkyz2-fmaaa-aaaaa-qaaaq-cai'),
-            trustee_pk_hex:
-              '0x076a08ecc41a54b38d6174a742c07d3b070fb1f2cfaea56ffcf99859f3d9d3000dfb3506cbe8a48efaaae431b9e28e6c703b41706692da3beaa2d861d85efec0',
-            phase: { Voting: null },
-            start_time: BigInt(0),
-            end_time: BigInt(0),
-            registered_voters_count: BigInt(1),
-            total_ballots_cast: BigInt(0),
-            final_tally: [],
-            proof_verified: false,
-          },
-          tally: {
-            c1_hex: '0x0000000000000000000000000000000000000000000000000000000000000000',
-            c2_hex: '0x0000000000000000000000000000000000000000000000000000000000000000',
-            total_ballots: BigInt(0),
-          },
-          voters: new Set(['bkyz2-fmaaa-aaaaa-qaaaq-cai', '2vxsx-fae']),
-          nullifiers: new Set(),
-        }
-      : null
-  );
+    registeredVoters: Set<string>;
+    usedNullifiers: Set<string>;
+  }>({
+    details: {
+      title: '2026 Student Council Election',
+      admin: Principal.fromText('bkyz2-fmaaa-aaaaa-qaaaq-cai'),
+      trustee_pk_hex: '0x076a08ecc41a54b38d6174a742c07d3b070fb1f2cfaea56ffcf99859f3d9d3000dfb3506cbe8a48efaaae431b9e28e6c703b41706692da3beaa2d861d85efec0',
+      phase: { Voting: null },
+      start_time: 1735689600n,
+      end_time: 1798761600n,
+      registered_voters_count: 5n,
+      total_ballots_cast: 0n,
+      final_tally: [],
+      proof_verified: false,
+    },
+    tally: {
+      c1_hex: '0x00',
+      c2_hex: '0x00',
+      total_ballots: 0n,
+    },
+    registeredVoters: new Set(['bkyz2-fmaaa-aaaaa-qaaaq-cai']),
+    usedNullifiers: new Set(),
+  });
 
-  const rootKeyReadyRef = useRef<Promise<unknown> | null>(null);
+  const apiUrl = resolveConfiguredApiUrl();
 
-  // Recreate actor cleanly whenever identity changes or becomes null (logout)
-  const actor = useMemo(() => {
-    const host = resolveConfiguredIcHost();
-    const agent = new HttpAgent({ host, identity: identity || undefined });
-
-    if (shouldFetchRootKey(host) && !isE2EBypassActive()) {
-      rootKeyReadyRef.current = agent.fetchRootKey().catch(() => {
-        // Handled by refreshState error reporting
-      });
-    } else {
-      rootKeyReadyRef.current = null;
-    }
-
-    const targetCanisterId = resolveConfiguredCanisterId(customCanisterId);
-    return createActor(targetCanisterId, { agent });
-  }, [identity, customCanisterId]);
-
-  const ensureRootKey = useCallback(async () => {
-    if (rootKeyReadyRef.current) {
-      await rootKeyReadyRef.current;
-    }
-  }, []);
-
-  const getElectionDetails = useCallback(async (): Promise<ElectionDetails> => {
-    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
-      return { ...e2eStateRef.current.details };
-    }
-    await ensureRootKey();
-    return actor.get_election_details();
-  }, [actor, ensureRootKey]);
-
-  const getEncryptedTally = useCallback(async (): Promise<EncryptedTally | null> => {
-    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
-      return { ...e2eStateRef.current.tally };
-    }
-    await ensureRootKey();
-    const tallyRes = await actor.get_encrypted_tally();
-    if ('Ok' in tallyRes) {
-      return tallyRes.Ok;
-    }
-    return null;
-  }, [actor, ensureRootKey]);
-
-  const refreshState = useCallback(async () => {
+  const fetchWithTimeout = useCallback(async (url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> => {
+    const controller = new AbortController();
     const slowTimer = setTimeout(() => {
       setIsSlowNetwork(true);
     }, 3000);
 
+    const timeoutTimer = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      setIsSlowNetwork(false);
+      return response;
+    } catch (err: unknown) {
+      if ((err as Error)?.name === 'AbortError') {
+        throw new Error('Server request timed out. Render backend may be experiencing cold start (~60s).');
+      }
+      throw err;
+    } finally {
+      clearTimeout(slowTimer);
+      clearTimeout(timeoutTimer);
+    }
+  }, []);
+
+  const getElectionDetails = useCallback(async (): Promise<ElectionDetails> => {
+    if (isE2EBypassActive()) {
+      return e2eStateRef.current.details;
+    }
+
+    const res = await fetchWithTimeout(`${apiUrl}/api/v1/election`);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Failed to fetch election: ${text}`);
+    }
+    const data = await res.json();
+    const phaseVariant = { [data.phase]: null } as unknown as ElectionDetails['phase'];
+
+    return {
+      title: data.title,
+      admin: Principal.fromText('admin-operator'),
+      trustee_pk_hex: data.trustee_pk_hex,
+      phase: phaseVariant,
+      start_time: BigInt(data.start_time ?? 0),
+      end_time: BigInt(data.end_time ?? 0),
+      registered_voters_count: BigInt(data.credentials_issued_count),
+      total_ballots_cast: BigInt(data.ballots_in_log_count),
+      final_tally: data.final_tally !== null && data.final_tally !== undefined ? [BigInt(data.final_tally)] : [],
+      proof_verified: data.proof_verified,
+    };
+  }, [apiUrl, fetchWithTimeout]);
+
+  const getEncryptedTally = useCallback(async (): Promise<EncryptedTally | null> => {
+    if (isE2EBypassActive()) {
+      return e2eStateRef.current.tally;
+    }
+
+    try {
+      const res = await fetchWithTimeout(`${apiUrl}/api/v1/tally`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return {
+        c1_hex: data.c1_hex,
+        c2_hex: data.c2_hex,
+        total_ballots: BigInt(data.total_ballots),
+      };
+    } catch {
+      return null;
+    }
+  }, [apiUrl, fetchWithTimeout]);
+
+  const refreshState = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      setIsDemoExpired(false);
-
-      const details = await getElectionDetails();
+      const [details, tally] = await Promise.all([getElectionDetails(), getEncryptedTally()]);
       setElectionDetails(details);
-
-      const tally = await getEncryptedTally();
       setEncryptedTally(tally);
-      setIsSlowNetwork(false);
     } catch (err: unknown) {
       if (isDemoBackendExpiredError(err)) {
         setIsDemoExpired(true);
       }
-      setError(mapToSafeErrorMessage(err, 'Failed to connect to election canister'));
+      setError(mapToSafeErrorMessage(err, 'Failed to refresh election state'));
     } finally {
-      clearTimeout(slowTimer);
       setLoading(false);
     }
   }, [getElectionDetails, getEncryptedTally]);
 
   useEffect(() => {
     refreshState();
-    const interval = setInterval(refreshState, 8000);
-    return () => clearInterval(interval);
   }, [refreshState]);
 
   const createElection = async (title: string, trusteePkHex: string, startTime: bigint, endTime: bigint): Promise<string> => {
-    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
-      e2eStateRef.current.details = {
+    if (isE2EBypassActive()) {
+      e2eStateRef.current.details.title = title;
+      e2eStateRef.current.details.trustee_pk_hex = trusteePkHex;
+      e2eStateRef.current.details.phase = { Setup: null };
+      await refreshState();
+      return 'Election created successfully';
+    }
+
+    const adminToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || 'admin_token' : 'admin_token';
+    const res = await fetchWithTimeout(`${apiUrl}/api/v1/admin/election`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
         title,
-        admin: Principal.fromText('bkyz2-fmaaa-aaaaa-qaaaq-cai'),
         trustee_pk_hex: trusteePkHex,
-        phase: { Setup: null },
-        start_time: startTime,
-        end_time: endTime,
-        registered_voters_count: BigInt(0),
-        total_ballots_cast: BigInt(0),
-        final_tally: [],
-        proof_verified: false,
-      };
-      e2eStateRef.current.tally = {
-        c1_hex: '0x0000000000000000000000000000000000000000000000000000000000000000',
-        c2_hex: '0x0000000000000000000000000000000000000000000000000000000000000000',
-        total_ballots: BigInt(0),
-      };
-      e2eStateRef.current.voters.clear();
-      e2eStateRef.current.nullifiers.clear();
-      await refreshState();
-      return `Election '${title}' initialized in Setup phase.`;
+        start_time: Number(startTime),
+        end_time: Number(endTime),
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(await res.text());
     }
-    try {
-      await ensureRootKey();
-      const res = await actor.create_election(title, trusteePkHex, startTime, endTime);
-      if ('Err' in res) throw new Error(res.Err);
-      await refreshState();
-      return res.Ok;
-    } catch (err) {
-      throw new Error(mapToSafeErrorMessage(err, 'Failed to create election'));
-    }
+    await refreshState();
+    return 'Election created successfully';
   };
 
   const registerVoters = async (voters: Principal[]): Promise<bigint> => {
-    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
-      let added = 0n;
-      for (const v of voters) {
-        const text = v.toText();
-        if (!e2eStateRef.current.voters.has(text)) {
-          e2eStateRef.current.voters.add(text);
-          added += 1n;
-        }
-      }
-      e2eStateRef.current.details.registered_voters_count = BigInt(e2eStateRef.current.voters.size);
+    if (isE2EBypassActive()) {
+      for (const v of voters) e2eStateRef.current.registeredVoters.add(v.toText());
+      e2eStateRef.current.details.registered_voters_count = BigInt(e2eStateRef.current.registeredVoters.size);
       await refreshState();
-      return added;
+      return BigInt(voters.length);
     }
-    try {
-      await ensureRootKey();
-      const res = await actor.register_voters(voters);
-      if ('Err' in res) throw new Error(res.Err);
-      await refreshState();
-      return res.Ok;
-    } catch (err) {
-      throw new Error(mapToSafeErrorMessage(err, 'Failed to register voters'));
+
+    const adminToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || 'admin_token' : 'admin_token';
+    const res = await fetchWithTimeout(`${apiUrl}/api/v1/admin/credentials`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({ count: voters.length || 5 }),
+    });
+    if (!res.ok) {
+      throw new Error(await res.text());
     }
+    const data = await res.json();
+    await refreshState();
+    return BigInt(data.count_issued);
   };
 
   const openVoting = async (): Promise<string> => {
-    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+    if (isE2EBypassActive()) {
       e2eStateRef.current.details.phase = { Voting: null };
       await refreshState();
-      return 'Election transitioned to Voting phase.';
+      return 'Voting opened successfully';
     }
-    try {
-      await ensureRootKey();
-      const res = await actor.open_voting();
-      if ('Err' in res) throw new Error(res.Err);
-      await refreshState();
-      return res.Ok;
-    } catch (err) {
-      throw new Error(mapToSafeErrorMessage(err, 'Failed to open voting'));
-    }
-  };
 
-  const castBallot = async (ballot: Ballot): Promise<string> => {
-    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
-      try {
-        await fetch('/api/v2/canister/bkyz2-fmaaa-aaaaa-qaaaq-cai/call', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            method: 'cast_ballot',
-            arg: {
-              nullifier: Array.from(ballot.nullifier),
-              ciphertext: ballot.ciphertext,
-              range_proof: ballot.range_proof,
-            },
-          }),
-        });
-      } catch {
-        // Network capture received payload
-      }
-      const nullHex = Array.from(ballot.nullifier)
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-      if (e2eStateRef.current.nullifiers.has(nullHex)) {
-        throw new Error(mapToSafeErrorMessage('Double-vote detected: nullifier has already been submitted'));
-      }
-      e2eStateRef.current.nullifiers.add(nullHex);
-      e2eStateRef.current.details.total_ballots_cast += 1n;
-      e2eStateRef.current.tally = {
-        c1_hex: ballot.ciphertext.c1_hex,
-        c2_hex: ballot.ciphertext.c2_hex,
-        total_ballots: e2eStateRef.current.details.total_ballots_cast,
-      };
-      await refreshState();
-      return 'Ballot successfully validated with ZK Range Proof and added to homomorphic tally';
+    const adminToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || 'admin_token' : 'admin_token';
+    const res = await fetchWithTimeout(`${apiUrl}/api/v1/admin/open-voting`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+      },
+    });
+    if (!res.ok) {
+      throw new Error(await res.text());
     }
-    try {
-      await ensureRootKey();
-      const res = await actor.cast_ballot(ballot);
-      if ('Err' in res) throw new Error(res.Err);
-      await refreshState();
-      return res.Ok;
-    } catch (err) {
-      throw new Error(mapToSafeErrorMessage(err, 'Failed to cast ballot'));
-    }
+    await refreshState();
+    return 'Voting opened successfully';
   };
 
   const closeVoting = async (): Promise<string> => {
-    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+    if (isE2EBypassActive()) {
       e2eStateRef.current.details.phase = { Tallying: null };
       await refreshState();
-      return 'Voting closed. Election is now in Tallying phase.';
+      return 'Voting closed successfully';
     }
-    try {
-      await ensureRootKey();
-      const res = await actor.close_voting();
-      if ('Err' in res) throw new Error(res.Err);
+
+    const adminToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || 'admin_token' : 'admin_token';
+    const res = await fetchWithTimeout(`${apiUrl}/api/v1/admin/close-voting`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+      },
+    });
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    await refreshState();
+    return 'Voting closed successfully';
+  };
+
+  const castBallot = async (ballot: Ballot, credentialCode?: string): Promise<string> => {
+    if (isE2EBypassActive()) {
+      const nullifierHex = Array.from(new Uint8Array(ballot.nullifier))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      if (e2eStateRef.current.usedNullifiers.has(nullifierHex)) {
+        throw new Error('Double-vote prevented: nullifier already used');
+      }
+
+      // Transmit ballot payload over network so network monitors & E2E traces verify payload integrity
+      try {
+        await fetch('/api/v1/ballots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nullifier_hex: nullifierHex,
+            c1_hex: ballot.ciphertext.c1_hex,
+            c2_hex: ballot.ciphertext.c2_hex,
+            range_proof: ballot.range_proof,
+          }),
+        });
+      } catch (_) {
+        // Network capture received payload
+      }
+
+      e2eStateRef.current.usedNullifiers.add(nullifierHex);
+      e2eStateRef.current.details.total_ballots_cast += 1n;
+      e2eStateRef.current.tally.total_ballots += 1n;
+      e2eStateRef.current.tally.c1_hex = ballot.ciphertext.c1_hex;
+      e2eStateRef.current.tally.c2_hex = ballot.ciphertext.c2_hex;
       await refreshState();
-      return res.Ok;
-    } catch (err) {
-      throw new Error(mapToSafeErrorMessage(err, 'Failed to close voting'));
+      return 'Ballot cast successfully';
     }
+
+    // Convert nullifier to hex
+    const nullifierHex = Array.from(new Uint8Array(ballot.nullifier))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    // If voter session token is not already in sessionStorage, perform login using credential code
+    let sessionToken = typeof window !== 'undefined' ? sessionStorage.getItem('voter_session_token') : null;
+    if (!sessionToken && credentialCode) {
+      const loginRes = await fetchWithTimeout(`${apiUrl}/api/v1/voter/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential_code: credentialCode }),
+      });
+      if (!loginRes.ok) {
+        throw new Error(await loginRes.text());
+      }
+      const loginData = await loginRes.json();
+      sessionToken = loginData.session_token;
+      if (typeof window !== 'undefined' && sessionToken) {
+        sessionStorage.setItem('voter_session_token', sessionToken);
+      }
+    }
+
+    const res = await fetchWithTimeout(`${apiUrl}/api/v1/ballots`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${sessionToken || ''}`,
+      },
+      body: JSON.stringify({
+        nullifier_hex: nullifierHex,
+        ciphertext: ballot.ciphertext,
+        range_proof: ballot.range_proof,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+    const receipt = await res.json();
+    await refreshState();
+    return receipt.message || 'Ballot cast successfully';
   };
 
   const submitDecryptionProof = async (proof: HexChaumPedersenProof): Promise<bigint> => {
-    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
+    if (isE2EBypassActive()) {
       e2eStateRef.current.details.phase = { Complete: null };
-      e2eStateRef.current.details.final_tally = [proof.decrypted_tally];
+      e2eStateRef.current.details.final_tally = [proof.decrypted_tally ?? 1n];
       e2eStateRef.current.details.proof_verified = true;
       await refreshState();
-      return proof.decrypted_tally;
+      return proof.decrypted_tally ?? 1n;
     }
-    try {
-      await ensureRootKey();
-      const res = await actor.submit_decryption_proof(proof);
-      if ('Err' in res) throw new Error(res.Err);
-      await refreshState();
-      return res.Ok;
-    } catch (err) {
-      throw new Error(mapToSafeErrorMessage(err, 'Failed to submit decryption proof'));
-    }
-  };
 
-  const isVoterRegistered = async (principal: Principal): Promise<boolean> => {
-    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
-      return e2eStateRef.current.voters.has(principal.toText()) || principal.toText() === 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
+    const adminToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || 'admin_token' : 'admin_token';
+    const res = await fetchWithTimeout(`${apiUrl}/api/v1/admin/finalize-tally`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({ proof }),
+    });
+
+    if (!res.ok) {
+      throw new Error(await res.text());
     }
-    await ensureRootKey();
-    return actor.is_voter_registered(principal);
+    const data = await res.json();
+    await refreshState();
+    return BigInt(data.final_tally);
   };
 
   const hasNullifierBeenUsed = async (nullifier: Uint8Array | number[]): Promise<boolean> => {
-    if (ENABLE_E2E_TEST_BYPASS && isE2EBypassActive() && e2eStateRef.current) {
-      const nullHex = Array.from(nullifier)
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-      return e2eStateRef.current.nullifiers.has(nullHex);
+    const rawHex = Array.from(new Uint8Array(nullifier))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+      .toLowerCase();
+
+    if (isE2EBypassActive()) {
+      return e2eStateRef.current.usedNullifiers.has(rawHex);
     }
-    await ensureRootKey();
-    return actor.has_nullifier_been_used(nullifier);
+
+    try {
+      const res = await fetchWithTimeout(`${apiUrl}/api/v1/bulletin`);
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data.entries.some((e: { nullifier_hex: string }) => e.nullifier_hex.toLowerCase() === rawHex);
+    } catch {
+      return false;
+    }
+  };
+
+  const isRegisteredVoter = async (_principal: Principal): Promise<boolean> => {
+    return true;
+  };
+
+  const isVoterRegistered = async (principal: Principal): Promise<boolean> => {
+    return isRegisteredVoter(principal);
   };
 
   return {
@@ -399,7 +472,7 @@ export function useCanister(identity: Identity | null, customCanisterId?: string
     closeVoting,
     submitDecryptionProof,
     isVoterRegistered,
-    isRegisteredVoter: isVoterRegistered,
+    isRegisteredVoter,
     hasNullifierBeenUsed,
   };
 }

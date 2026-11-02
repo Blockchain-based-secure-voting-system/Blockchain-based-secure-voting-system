@@ -32,9 +32,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
             'Choose your role below (Voter, Public Observer, Election Administrator, or Trustee) or launch an interactive step-by-step walkthrough.',
           whatHappensNext: phaseInfo
             ? `${phaseInfo.badgeLabel}: ${phaseInfo.whatHappensNext}`
-            : 'Once the election administrator initializes an election on the canister, live status appears here.',
+            : 'Once the election administrator initializes an election on the backend ledger, live status appears here.',
           whatIfSomethingGoesWrong:
-            'If the replica is unreachable or your session expires, use the Retry button in the status banner or visit Accessibility & Help (/help).',
+            'If the server is unreachable or your session expires, use the Retry button in the status banner or visit Accessibility & Help (/help).',
         }}
       />
 
@@ -47,7 +47,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         <h1 style={{ marginBottom: '0.75rem' }}>
-          Private Ballots in Your Browser. Publicly Auditable Math on the Canister.
+          Private Ballots in Your Browser. Publicly Auditable Math on the Verifiable Ledger.
         </h1>
         <p className="text-secondary mb-4" style={{ fontSize: '1.02rem', lineHeight: 1.6 }}>
           This system is built for organizations, universities, and community boards that need a transparent YES/NO poll

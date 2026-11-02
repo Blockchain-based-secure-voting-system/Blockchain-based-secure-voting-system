@@ -79,7 +79,7 @@ export const TrusteeView: React.FC<{
     setSharesClearedNotice(false);
 
     if (!encryptedTally) {
-      setStatusMessage({ type: 'error', text: 'Encrypted tally not available from canister.' });
+      setStatusMessage({ type: 'error', text: 'Encrypted tally not available from server.' });
       return;
     }
 
@@ -154,7 +154,7 @@ export const TrusteeView: React.FC<{
             ? 'Combine at least n trustee shares in memory to unlock the encrypted tally and submit a Chaum-Pedersen proof.'
             : 'Generate an n-of-m threshold key setup prior to Election Setup, or review the Share-Handling Guide below.',
           whatHappensNext:
-            'When a valid Chaum-Pedersen proof is submitted during Tallying, the canister verifies it and transitions to Complete.',
+            'When a valid Chaum-Pedersen proof is submitted during Tallying, the backend verifies it and transitions to Complete.',
           whatIfSomethingGoesWrong:
             'Shares are wiped from memory automatically on submission, error, tab hide, or unmount, while non-secret bounds remain preserved.',
         }}
@@ -204,7 +204,7 @@ export const TrusteeView: React.FC<{
           <div className="alert alert-info" role="status">
             <AlertTriangle size={18} aria-hidden="true" />
             <span>
-              <strong>Phase Restriction (UX Notice):</strong> Threshold tally decryption is disabled while the canister is in the <strong>{phaseName}</strong> phase. Decryption proof submission is only permitted during the <strong>Tallying</strong> phase.
+              <strong>Phase Restriction (UX Notice):</strong> Threshold tally decryption is disabled while the election is in the <strong>{phaseName}</strong> phase. Decryption proof submission is only permitted during the <strong>Tallying</strong> phase.
             </span>
           </div>
         )}
@@ -337,7 +337,7 @@ export const TrusteeView: React.FC<{
             <Cpu size={20} aria-hidden="true" /> Threshold Tally Decryption
           </h3>
           <p className="text-secondary">
-            Combine threshold shares in memory &amp; submit Chaum-Pedersen ZK proof to canister.
+            Combine threshold shares in memory &amp; submit Chaum-Pedersen ZK proof to server.
           </p>
 
           <form onSubmit={handleDecryptAndFinalize} className="stack-md" autoComplete="off">

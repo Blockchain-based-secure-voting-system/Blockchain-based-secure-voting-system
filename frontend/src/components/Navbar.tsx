@@ -73,7 +73,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="brand-section">
           <ShieldCheck className="brand-icon" size={28} aria-hidden="true" />
           <div className="stack-sm">
-            <span className="brand-title">ICP Zero-Knowledge Voting</span>
+            <span className="brand-title">Zero-Knowledge Secure Voting</span>
             <div>
               <span className="brand-badge">BN254 Homomorphic ElGamal</span>
             </div>
@@ -141,7 +141,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           ) : (
             <button type="button" className="btn btn-primary btn-sm" onClick={() => void auth.login()}>
-              <LogIn size={14} aria-hidden="true" /> Internet Identity
+              <LogIn size={14} aria-hidden="true" /> Voter Login
             </button>
           )}
         </div>
@@ -149,7 +149,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       <div className="phase-banner" role="status" aria-live="polite" aria-label="Persistent Election Lifecycle Phase Indicator">
         <div>
-          <span>Active Canister Lifecycle Phase: </span>
+          <span>Active Election Lifecycle Phase: </span>
           <strong>{activePhase}</strong>
         </div>
         <div className="phase-steps">

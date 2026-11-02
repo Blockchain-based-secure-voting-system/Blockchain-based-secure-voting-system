@@ -131,7 +131,7 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
     );
 
     // Step 1
-    expect(screen.getByText(/1\. Sign in with Internet Identity/i)).toBeDefined();
+    expect(screen.getByText(/1\. Sign in with (Internet Identity|Voter Credential)/i)).toBeDefined();
 
     // Advance to Step 4 using ArrowRight key
     act(() => {
@@ -189,7 +189,7 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
   it('simulates all 5 resilience states (replica unreachable, wrong network, expired session, canister rejection preserving inputs, and expired voting deadline)', async () => {
     // 1. Replica unreachable
     const unreachableMsg = mapToSafeErrorMessage(new Error('TypeError: Failed to fetch (ERR_CONNECTION_REFUSED)'));
-    expect(unreachableMsg).toContain('Cannot reach the election canister on the Internet Computer replica');
+    expect(unreachableMsg).toContain('Cannot reach the backend API server');
 
     // 2. Wrong network / canister not deployed
     const wrongNetMsg = mapToSafeErrorMessage(new Error('IC0301: canister_not_found DestinationInvalid'));
@@ -225,7 +225,7 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
 
     // Error is shown in plain language AND non-secret inputs are preserved
     expect(screen.getByRole('alert').textContent).toContain(
-      'Authorization denied: Only the Principal ID that initialized the canister'
+      'Authorization denied: Only the election administrator can'
     );
     expect(titleInput.value).toBe('Preserved Civic Election Title');
     expect(pkInput.value).toBe(validPk);
@@ -244,7 +244,7 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
       '[DEADLINE PASSED — AWAITING ADMIN TRANSITION]'
     );
     expect(screen.getByTestId('verify-it-yourself-section').textContent).toContain(
-      'dfx canister call canister get_election_details'
+      'cargo run -p cli -- audit'
     );
   });
 });

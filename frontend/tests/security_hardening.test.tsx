@@ -83,7 +83,7 @@ describe('Safe Error Mapping (Zero Secret / Stack Trace Leakage)', () => {
     expect(mapped).toContain('[REDACTED_HEX]');
 
     expect(mapToSafeErrorMessage(new Error('TypeError: Failed to fetch'))).toContain(
-      'Cannot reach the election canister'
+      'Cannot reach the backend API server'
     );
     expect(mapToSafeErrorMessage(new Error('Double-vote detected for nullifier'))).toContain(
       'Double-vote prevented'

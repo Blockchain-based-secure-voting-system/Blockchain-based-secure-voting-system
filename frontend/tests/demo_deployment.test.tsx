@@ -121,10 +121,10 @@ describe('Part 2 & Part 3: Demo Deployment Security, RootKey Guard, Expired Play
 
     render(<App />);
 
-    // Verify persistent Demo Notice banner is always visible
+    // Verify persistent Architecture Notice banner is always visible
     const demoNotice = screen.getByTestId('demo-notice-banner');
-    expect(demoNotice.textContent).toContain('[TEMPORARY DEMO DEPLOYMENT NOTICE]');
-    expect(demoNotice.textContent).toContain('~20-minute time-to-live (TTL)');
+    expect(demoNotice.textContent).toContain('[SYSTEM ARCHITECTURE NOTICE]');
+    expect(demoNotice.textContent).toContain('centralized Rust Axum + PostgreSQL server');
     expect(demoNotice.textContent).toContain('unaudited reference implementation');
     expect(demoNotice.textContent).toContain('Vercel host operator controls the JavaScript and WebAssembly bundle');
 
@@ -134,9 +134,8 @@ describe('Part 2 & Part 3: Demo Deployment Security, RootKey Guard, Expired Play
     });
 
     const expiredBanner = screen.getByTestId('demo-expired-banner');
-    expect(expiredBanner.textContent).toContain('[DEMO BACKEND EXPIRED OR NOT INSTALLED]');
-    expect(expiredBanner.textContent).toContain('20-minute expiration window');
-    expect(expiredBanner.textContent).toContain('./scripts/deploy_demo.sh');
+    expect(expiredBanner.textContent).toContain('[BACKEND SERVER UNREACHABLE]');
+    expect(expiredBanner.textContent).toContain('https://voting-system-api-wi7q.onrender.com');
 
     render(<TestUseCanisterHarness />);
     await waitFor(() => {

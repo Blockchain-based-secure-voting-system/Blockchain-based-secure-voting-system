@@ -98,13 +98,14 @@ export function App() {
           phase={canister.electionDetails?.phase}
         />
 
-        <div className="alert alert-info" role="note" aria-label="Temporary Demo Deployment Notice" data-testid="demo-notice-banner">
+        <div className="alert alert-info" role="note" aria-label="System Architecture Notice" data-testid="demo-notice-banner">
           <Clock size={18} aria-hidden="true" />
           <div style={{ width: '100%' }}>
-            <strong>[TEMPORARY DEMO DEPLOYMENT NOTICE]:</strong> (1) The backend canister runs on the public ICP Playground
-            with a hard <strong>~20-minute time-to-live (TTL)</strong>, after which all election state is automatically deleted.
-            (2) This codebase is an <strong>unaudited reference implementation</strong> and must not be used for binding public
-            elections without an independent security audit. (3) When hosted on Vercel, the <strong>Vercel host operator controls
+            <strong>[SYSTEM ARCHITECTURE NOTICE]:</strong> (1) The backend runs as a centralized Rust Axum + PostgreSQL server
+            on Render with an append-only cryptographic bulletin board.
+            (2) Ballots are encrypted client-side in your browser using BN254 WebAssembly and zero-knowledge range proofs before reaching the network.
+            (3) This codebase is an <strong>unaudited reference implementation</strong> and must not be used for binding public
+            elections without an independent security audit. (4) When hosted on Vercel, the <strong>Vercel host operator controls
             the JavaScript and WebAssembly bundle</strong> served to your browser that encrypts ballots client-side.
           </div>
         </div>
@@ -114,10 +115,8 @@ export function App() {
             <AlertCircle size={18} aria-hidden="true" />
             <div className="row-between" style={{ width: '100%' }}>
               <span>
-                <strong>[DEMO BACKEND EXPIRED OR NOT INSTALLED]:</strong> The ICP Playground demo canister has reached its
-                20-minute expiration window (or its WebAssembly module is not installed at the configured Canister ID).
-                Redeploy a fresh demo instance by running <code>./scripts/deploy_demo.sh</code> (or{' '}
-                <code>dfx deploy canister --playground</code>) and rebuilding with the new <code>VITE_CANISTER_ID</code>.
+                <strong>[BACKEND SERVER UNREACHABLE]:</strong> The election server at <code>https://voting-system-api-wi7q.onrender.com</code> could
+                not be reached. Verify that the backend is deployed and active on Render or locally, and retry.
               </span>
               <button
                 type="button"
@@ -136,7 +135,7 @@ export function App() {
             <Clock size={18} aria-hidden="true" />
             <div className="row-between" style={{ width: '100%' }}>
               <span>
-                <strong>[SESSION EXPIRED]:</strong> Your Internet Identity delegation has expired. You have been returned
+                <strong>[SESSION EXPIRED]:</strong> Your authentication session has expired. You have been returned
                 to a signed-out state. Reconnect when ready.
               </span>
               <button type="button" className="btn btn-primary btn-sm" onClick={() => void auth.login()}>
@@ -151,8 +150,8 @@ export function App() {
             <Clock size={18} aria-hidden="true" />
             <div className="row-between" style={{ width: '100%' }}>
               <span>
-                <strong>[SLOW NETWORK DETECTED]:</strong> Canister verification is taking longer than expected (&gt;3s).
-                The Internet Computer replica may be busy verifying elliptic-curve proofs.
+                <strong>[SLOW NETWORK DETECTED]:</strong> Server verification is taking longer than expected (&gt;3s).
+                The backend server may be busy processing cryptographic operations.
               </span>
               <button type="button" className="btn btn-secondary btn-sm" onClick={canister.refreshState}>
                 <RefreshCw size={14} aria-hidden="true" /> Retry Now
@@ -166,7 +165,7 @@ export function App() {
             <AlertCircle size={18} aria-hidden="true" />
             <div className="row-between" style={{ width: '100%' }}>
               <span>
-                <strong>[CANISTER CONNECTION ERROR]:</strong> {canister.error}
+                <strong>[BACKEND CONNECTION ERROR]:</strong> {canister.error}
               </span>
               <button
                 type="button"

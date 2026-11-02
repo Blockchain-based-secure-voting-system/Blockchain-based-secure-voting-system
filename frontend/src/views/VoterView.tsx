@@ -105,7 +105,7 @@ export const VoterView: React.FC<{
     const pkHex = electionDetails?.trustee_pk_hex || '';
     const pkCheck = validateHexString(pkHex, 'Trustee Master Public Key', 32, 128);
     if (!pkCheck.valid) {
-      setErrorMessage(pkCheck.error || 'Trustee Master Public Key is not configured on canister.');
+      setErrorMessage(pkCheck.error || 'Trustee Master Public Key is not configured on server.');
       return false;
     }
     return true;
@@ -195,8 +195,8 @@ export const VoterView: React.FC<{
         orientation={{
           whereAmI: 'Vote (/vote) — Voter ballot encryption and submission portal.',
           whatCanIDoNow: isVotingOpen
-            ? 'Sign in with Internet Identity, verify your Principal eligibility, choose your ballot option, and encrypt your ballot in browser WebAssembly.'
-            : `Voting is currently ${phaseName}. Ballot casting is only enabled when the canister phase is Voting.`,
+            ? 'Sign in with your voter credential, verify your eligibility, choose your ballot option, and encrypt your ballot in browser WebAssembly.'
+            : `Voting is currently ${phaseName}. Ballot casting is only enabled when the election phase is Voting.`,
           whatHappensNext:
             'After submission, your encrypted ballot is added to the homomorphic tally and you receive a 32-byte nullifier receipt to check on /verify.',
           whatIfSomethingGoesWrong:
@@ -264,7 +264,7 @@ export const VoterView: React.FC<{
           <div className="alert alert-info" role="status" aria-live="polite">
             <RefreshCw size={18} aria-hidden="true" />
             <span>
-              <strong>Loading Canister State:</strong> Checking election status...
+              <strong>Loading Server State:</strong> Checking election status...
             </span>
           </div>
         )}
@@ -274,7 +274,7 @@ export const VoterView: React.FC<{
             <AlertTriangle size={18} aria-hidden="true" />
             <div className="row-between" style={{ width: '100%' }}>
               <span>
-                <strong>Cannot Reach Canister:</strong> {error}
+                <strong>Cannot Reach Server:</strong> {error}
               </span>
               <button type="button" className="btn btn-secondary btn-sm" onClick={refreshState}>
                 Retry
@@ -287,7 +287,7 @@ export const VoterView: React.FC<{
           <div className="alert alert-info" role="status">
             <AlertTriangle size={18} aria-hidden="true" />
             <span>
-              <strong>Phase Restriction (UX Notice):</strong> Ballot submission is currently disabled because the canister phase is <strong>{phaseName}</strong>. Voting is only permitted during the <strong>Voting</strong> phase (enforced on-chain by the canister).
+              <strong>Phase Restriction (UX Notice):</strong> Ballot submission is currently disabled because the election phase is <strong>{phaseName}</strong>. Voting is only permitted during the <strong>Voting</strong> phase (enforced by the backend ledger).
             </span>
           </div>
         )}
@@ -296,7 +296,7 @@ export const VoterView: React.FC<{
           <div className="alert alert-info" role="status">
             <Lock size={18} aria-hidden="true" />
             <span>
-              <strong>Authentication Required:</strong> Connect your Internet Identity above to verify your voter registration.
+              <strong>Authentication Required:</strong> Sign in with your voter credential above to verify your voter registration.
             </span>
           </div>
         ) : isRegistered === false ? (

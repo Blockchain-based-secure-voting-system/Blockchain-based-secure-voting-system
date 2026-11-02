@@ -135,7 +135,7 @@ export const AdminView: React.FC<{
         orientation={{
           whereAmI: 'Run an Election (/admin) — Election administrator setup, voter roll management, and phase transition controls.',
           whatCanIDoNow: isSetup
-            ? 'Configure election parameters, add eligible voter Principal IDs, or transition the canister from Setup to Voting.'
+            ? 'Configure election parameters, add eligible voter IDs, or transition the election from Setup to Voting.'
             : isVoting
               ? 'Monitor voting progress and close the Voting phase when the scheduled deadline arrives.'
               : `Current phase is ${phaseName}. Administrative setup and voter registration are locked.`,
@@ -182,7 +182,7 @@ export const AdminView: React.FC<{
           <div className="alert alert-info" role="status">
             <Lock size={18} aria-hidden="true" />
             <span>
-              <strong>Admin Authentication Required:</strong> Connect your Internet Identity above. All administrative mutations are strictly verified against the canister admin Principal on-chain.
+              <strong>Admin Authentication Required:</strong> Sign in with your admin credentials above. All administrative actions are strictly verified against the election administrator identity.
             </span>
           </div>
         )}
@@ -324,7 +324,7 @@ export const AdminView: React.FC<{
           Election Phase Controls
         </h3>
         <p className="text-secondary">
-          Strict state machine guarded on canister: Setup &rarr; Voting &rarr; Tallying &rarr; Complete. Phase transitions are irreversible.
+          Strict state machine guarded on the backend ledger: Setup &rarr; Voting &rarr; Tallying &rarr; Complete. Phase transitions are irreversible.
         </p>
 
         <div className="row-wrap">

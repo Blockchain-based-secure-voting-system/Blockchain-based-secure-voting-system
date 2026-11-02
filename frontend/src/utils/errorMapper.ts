@@ -48,7 +48,7 @@ export function mapToSafeErrorMessage(err: unknown, fallbackContext: string = 'O
 
   // 2. Map known network / replica / Wasm errors to clear, safe messages
   if (/fetch|network|ECONNREFUSED|ERR_CONNECTION_REFUSED|Failed to fetch|unreachable/i.test(firstLine)) {
-    return 'Cannot reach the election canister on the Internet Computer replica. Verify the replica is running and retry.';
+    return 'Cannot reach the backend API server. Verify the server is running and retry.';
   }
   if (/Wrong Network|Canister Not Deployed|canister_not_found|DestinationInvalid|IC0301|IC0537|has no wasm module|code_uninstall|Canister .* not found/i.test(firstLine)) {
     return 'Wrong Network or Canister Not Deployed: The configured Canister ID was not found or the temporary ICP Playground backend (20-minute TTL) has expired. Run ./scripts/deploy_demo.sh or dfx deploy canister to redeploy.';

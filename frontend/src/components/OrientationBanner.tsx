@@ -96,7 +96,7 @@ export const OrientationBanner: React.FC<OrientationBannerProps> = ({
       <div className="flex justify-between items-center mb-4" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
         <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
           <span className="badge badge-cobalt">
-            {phaseInfo ? phaseInfo.badgeLabel : 'Canister Status: Syncing / Uninitialized'}
+            {phaseInfo ? phaseInfo.badgeLabel : 'Server Status: Syncing / Uninitialized'}
           </span>
           {electionDetails && (electionDetails.start_time > 0n || electionDetails.end_time > 0n) && (
             <span className="text-secondary" style={{ fontSize: '0.85rem' }}>
@@ -124,7 +124,7 @@ export const OrientationBanner: React.FC<OrientationBannerProps> = ({
           <span className="status-prefix">[DEADLINE PASSED — AWAITING ADMIN TRANSITION]:</span> The scheduled voting
           closing time ({formatCanisterTime(electionDetails!.end_time).localFormatted} /{' '}
           {formatCanisterTime(electionDetails!.end_time).utcFormatted}) has passed by wall-clock time. New ballots will
-          be rejected by the canister time check, and the administrator should now transition the phase from{' '}
+          be rejected by the server deadline check, and the administrator should now transition the phase from{' '}
           <strong>Voting</strong> to <strong>Tallying</strong> in{' '}
           {onNavigate ? (
             <a

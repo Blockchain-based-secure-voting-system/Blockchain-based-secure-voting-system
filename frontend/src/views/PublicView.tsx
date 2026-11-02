@@ -53,7 +53,7 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
         isUsed,
       });
     } catch {
-      setNullifierError('Could not query nullifier status from the canister. Check replica connection and retry.');
+      setNullifierError('Could not query nullifier status from the server. Check backend connection and retry.');
     } finally {
       setCheckingNullifier(false);
     }
@@ -69,12 +69,12 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
         orientation={{
           whereAmI: 'Verify Results (/verify) — Public observer dashboard, ballot receipt checker, and independent CLI audit guide.',
           whatCanIDoNow:
-            'Inspect the live ballot count, check whether a 32-byte nullifier receipt was recorded on-chain, or run the dfx canister call commands below.',
+            'Inspect the live ballot count, check whether a 32-byte nullifier receipt was recorded on the bulletin board, or run the CLI audit commands below.',
           whatHappensNext: isComplete
-            ? 'The election is Complete and the Chaum-Pedersen proof is verified on-chain.'
+            ? 'The election is Complete and the Chaum-Pedersen proof is cryptographically verified.'
             : 'While voting is open, ballots are homomorphically summed. Once Tallying completes, the verified YES count appears here.',
           whatIfSomethingGoesWrong:
-            'If the canister status is out of date, click Refresh below. If a nullifier lookup fails, verify it is 64 hex characters.',
+            'If the server status is out of date, click Refresh below. If a nullifier lookup fails, verify it is 64 hex characters.',
         }}
       />
 
@@ -83,7 +83,7 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
           <div className="stack-sm">
             <div className="row-wrap">
               <h2 id="public-heading" className="card-title">
-                {electionDetails?.title || 'Decentralized Election'}
+                {electionDetails?.title || 'Verifiable Election'}
               </h2>
               <PhaseBadge phase={electionDetails?.phase} />
             </div>
@@ -96,7 +96,7 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
               <GlossaryTerm term="proof" onNavigate={onNavigate}>
                 zero-knowledge proof
               </GlossaryTerm>{' '}
-              and homomorphically added on-chain. Only a{' '}
+              and homomorphically accumulated on the bulletin board. Only a{' '}
               <GlossaryTerm term="threshold" onNavigate={onNavigate}>
                 threshold
               </GlossaryTerm>{' '}
@@ -128,7 +128,7 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
           <div className="alert alert-info" role="status" aria-live="polite">
             <RefreshCw size={18} aria-hidden="true" />
             <span>
-              <strong>Loading State:</strong> Querying election status from canister...
+              <strong>Loading State:</strong> Querying election status from server...
             </span>
           </div>
         )}
@@ -138,7 +138,7 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
             <AlertTriangle size={18} aria-hidden="true" />
             <div className="row-between" style={{ width: '100%' }}>
               <span>
-                <strong>Cannot Reach Canister:</strong> {error}
+                <strong>Cannot Reach Server:</strong> {error}
               </span>
               <button type="button" className="btn btn-secondary btn-sm" onClick={refreshState}>
                 Retry
@@ -151,7 +151,7 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
           <div className="alert alert-info" role="status">
             <ShieldAlert size={18} aria-hidden="true" />
             <span>
-              <strong>Empty Election State:</strong> No election has been configured on the canister yet. An administrator must initialize the election in the Admin portal (/admin).
+              <strong>Empty Election State:</strong> No election has been configured on the server yet. An administrator must initialize the election in the Admin portal (/admin).
             </span>
           </div>
         )}
@@ -200,7 +200,7 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
           <div className="alert alert-success" role="status" aria-live="polite">
             <CheckCircle size={18} aria-hidden="true" />
             <span>
-              <strong>Proof Verified:</strong> Chaum-Pedersen Discrete Log Equality proof verified by canister smart contract against Trustee Master Public Key.
+              <strong>Proof Verified:</strong> Chaum-Pedersen Discrete Log Equality proof cryptographically verified against Trustee Master Public Key.
             </span>
           </div>
         </section>
@@ -216,7 +216,7 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
           <GlossaryTerm term="nullifier" onNavigate={onNavigate}>
             nullifier
           </GlossaryTerm>{' '}
-          receipt you received after casting your ballot to confirm that your ballot was recorded on-chain.
+          receipt you received after casting your ballot to confirm that your ballot was recorded on the bulletin board.
         </p>
 
         <form onSubmit={handleCheckNullifier} className="stack-md" autoComplete="off">
@@ -235,7 +235,7 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
           </div>
           <div>
             <button type="submit" className="btn btn-secondary" disabled={checkingNullifier}>
-              {checkingNullifier ? 'Checking Canister...' : 'Check Nullifier On-Chain'}
+              {checkingNullifier ? 'Checking Server...' : 'Check Nullifier on Ledger'}
             </button>
           </div>
         </form>
@@ -260,8 +260,8 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
               <strong>{nullifierCheckResult.isUsed ? '[RECORDED ON-CHAIN]:' : '[NOT FOUND]:'}</strong> Nullifier{' '}
               <code>{nullifierCheckResult.checkedHex}</code>{' '}
               {nullifierCheckResult.isUsed
-                ? 'is present in the canister’s used_nullifiers set and included in the homomorphic sum.'
-                : 'has not been submitted to this election canister.'}
+                ? 'is present in the bulletin board’s used nullifiers set and included in the homomorphic sum.'
+                : 'has not been submitted to this election server.'}
             </span>
           </div>
         )}
@@ -290,45 +290,45 @@ export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, on
             <span className="receipt-val">{encryptedTally?.c2_hex || '0x00'}</span>
           </div>
           <div className="receipt-row">
-            <span className="receipt-key">Canister Admin Principal:</span>
+            <span className="receipt-key">Admin Identity:</span>
             <span className="receipt-val">{electionDetails?.admin ? electionDetails.admin.toText() : 'N/A'}</span>
           </div>
         </div>
       </section>
 
-      {/* "Verify It Yourself" CLI / dfx Commands Section (Part 3.3) */}
+      {/* "Verify It Yourself" CLI / REST API Section (Part 3.3) */}
       <section className="card" aria-labelledby="verify-yourself-heading" data-testid="verify-it-yourself-section">
         <h3 id="verify-yourself-heading" className="card-title">
-          <Terminal size={20} aria-hidden="true" /> Verify It Yourself (Direct Canister Queries via DFX)
+          <Terminal size={20} aria-hidden="true" /> Verify It Yourself (Direct CLI &amp; REST API Queries)
         </h3>
         <p className="text-secondary">
-          You do not need to trust this web interface. Any observer with the Internet Computer SDK (<code>dfx</code>)
-          can query the canister directly from a terminal using the read-only Candid methods below:
+          You do not need to trust this web interface. Any observer or auditor can verify the election independently
+          using the audit CLI or direct REST queries against the immutable bulletin board:
         </p>
 
         <div className="receipt-card">
           <div className="stack-sm">
-            <span className="receipt-key">1. Query Election Metadata, Phase, Voter Count &amp; Verified Final Tally:</span>
+            <span className="receipt-key">1. Run Full Cryptographic Audit via CLI:</span>
             <pre className="receipt-val" style={{ whiteSpace: 'pre-wrap' }}>
-              dfx canister call canister get_election_details
+              cargo run -p cli -- audit --api-url &quot;https://voting-system-api-wi7q.onrender.com&quot;
             </pre>
           </div>
           <div className="stack-sm">
-            <span className="receipt-key">2. Query the Homomorphic Encrypted Ciphertext Sum (C1, C2):</span>
+            <span className="receipt-key">2. Fetch Election Details &amp; Public Parameters:</span>
             <pre className="receipt-val" style={{ whiteSpace: 'pre-wrap' }}>
-              dfx canister call canister get_encrypted_tally
+              curl -s https://voting-system-api-wi7q.onrender.com/api/v1/election
             </pre>
           </div>
           <div className="stack-sm">
-            <span className="receipt-key">3. Check If a Principal ID Is Registered on the Voter Roll:</span>
+            <span className="receipt-key">3. Inspect the Append-Only Bulletin Board Chain:</span>
             <pre className="receipt-val" style={{ whiteSpace: 'pre-wrap' }}>
-              {`dfx canister call canister is_voter_registered '(principal "2vxsx-fae")'`}
+              curl -s https://voting-system-api-wi7q.onrender.com/api/v1/bulletin
             </pre>
           </div>
           <div className="stack-sm">
-            <span className="receipt-key">4. Check If a 32-Byte Nullifier Receipt Has Been Recorded On-Chain:</span>
+            <span className="receipt-key">4. Verify Homomorphic Tally &amp; Decryption Proof:</span>
             <pre className="receipt-val" style={{ whiteSpace: 'pre-wrap' }}>
-              {`dfx canister call canister has_nullifier_been_used '(vec { 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8; 0 : nat8 })'`}
+              curl -s https://voting-system-api-wi7q.onrender.com/api/v1/tally
             </pre>
           </div>
         </div>

@@ -18,13 +18,13 @@ export const ROUTES: RouteMeta[] = [
     path: '/vote',
     navLabel: 'Vote',
     pageTitle: 'Cast Your Encrypted Ballot',
-    shortDescription: 'Sign in with Internet Identity, confirm your eligibility, and encrypt a YES or NO ballot in your browser.',
+    shortDescription: 'Sign in with your voter credential, confirm your eligibility, and encrypt a YES or NO ballot in your browser.',
   },
   {
     path: '/verify',
     navLabel: 'Verify results',
     pageTitle: 'Public Tally & Independent Verification',
-    shortDescription: 'Inspect the live encrypted tally, check your ballot receipt nullifier, or audit the canister yourself with dfx.',
+    shortDescription: 'Inspect the live encrypted tally, check your ballot receipt nullifier, or audit the bulletin board with the CLI audit tool.',
   },
   {
     path: '/admin',
@@ -140,17 +140,17 @@ export const ROLE_WALKTHROUGHS: Record<
     steps: [
       {
         stepNumber: 1,
-        title: '1. Sign in with Internet Identity',
+        title: '1. Sign in with Voter Credential',
         plainSummary:
-          'Click "Sign In (Internet Identity)" in the top navigation bar. Internet Identity gives you a pseudonymous Principal ID for this app without using passwords or email addresses.',
-        actionHint: 'After signing in, your Principal ID appears in the top bar so you can copy it for voter registration.',
+          'Click "Voter Login" in the top navigation bar. Enter your single-use voter credential code to authenticate anonymously without passwords or email addresses.',
+        actionHint: 'After signing in, your session status appears in the navigation bar.',
       },
       {
         stepNumber: 2,
         title: '2. Confirm your voter eligibility',
         plainSummary:
-          'When you open the Vote page (/vote), the app automatically asks the canister if your Principal ID is on the registered voter list and checks that the election is in the Voting phase.',
-        actionHint: 'If your Principal is not registered yet, share your Principal ID with the election administrator during the Setup phase.',
+          'When you open the Vote page (/vote), the app verifies with the backend server that your credential is valid and checks that the election is in the active Voting phase.',
+        actionHint: 'If your credential is not registered yet, contact the election administrator to issue an authorization code.',
       },
       {
         stepNumber: 3,
@@ -182,14 +182,14 @@ export const ROLE_WALKTHROUGHS: Record<
         stepNumber: 5,
         title: '5. Submit your ballot and save your nullifier receipt',
         plainSummary:
-          'Confirm submission in the dialog. The canister verifies your zero-knowledge range proof on-chain, adds your encrypted ballot to the running homomorphic sum, and returns your 32-byte nullifier receipt.',
+          'Confirm submission in the dialog. The server verifies your zero-knowledge range proof mathematically, adds your encrypted ballot to the append-only bulletin board, and returns your 32-byte nullifier receipt.',
         actionHint: 'Copy or save the 64-character hex nullifier receipt shown in the confirmation banner.',
       },
       {
         stepNumber: 6,
         title: '6. Verify your ballot was recorded on the Verify page',
         plainSummary:
-          'Go to "Verify results" (/verify) and paste your 64-character hex nullifier receipt into the Nullifier Lookup box, or run dfx canister call from your terminal to confirm the canister recorded your ballot.',
+          'Go to "Verify results" (/verify) and paste your 64-character hex nullifier receipt into the Nullifier Lookup box, or run the CLI audit tool from your terminal to confirm the server recorded your ballot.',
         actionHint: 'Anyone can verify that a nullifier is included in the tally without learning how you voted.',
       },
     ],
@@ -210,21 +210,21 @@ export const ROLE_WALKTHROUGHS: Record<
         stepNumber: 2,
         title: '2. Check a voter nullifier receipt',
         plainSummary:
-          'Paste any 32-byte (64 hex character) nullifier into the Nullifier Verification tool to query has_nullifier_been_used on the canister and confirm whether that ballot was included.',
-        actionHint: 'The canister returns true if the ballot is part of the homomorphic sum.',
+          'Paste any 32-byte (64 hex character) nullifier into the Nullifier Verification tool to verify against the bulletin board and confirm whether that ballot was included.',
+        actionHint: 'The server confirms true if the ballot is part of the homomorphic sum.',
       },
       {
         stepNumber: 3,
         title: '3. Inspect the homomorphic ciphertext sum',
         plainSummary:
-          'Expand the Technical Cryptographic Parameters section to inspect the Trustee Master Public Key and the running homomorphic sum points (C1, C2). Every accepted ballot is multiplied into this curve point sum on-chain.',
+          'Expand the Technical Cryptographic Parameters section to inspect the Trustee Master Public Key and the running homomorphic sum points (C1, C2). Every accepted ballot is multiplied into this curve point sum on the server ledger.',
         actionHint: 'While voting is open, C1 and C2 cannot be decrypted without at least n trustee shares.',
       },
       {
         stepNumber: 4,
         title: '4. Run the "Verify It Yourself" terminal commands',
         plainSummary:
-          'Use the copyable dfx canister call commands at the bottom of /verify to query get_election_details, get_encrypted_tally, and has_nullifier_been_used directly against the replica without trusting this web interface.',
+          'Use the copyable CLI audit commands at the bottom of /verify to query the election endpoints and cryptographic hash chain directly without trusting this web interface.',
         actionHint: 'Once the phase is Complete, verify that proof_verified is true and final_tally matches the verified decryption proof.',
       },
     ],
@@ -246,7 +246,7 @@ export const ROLE_WALKTHROUGHS: Record<
         title: '2. Create the election in the Setup phase',
         plainSummary:
           'In "Run an election" (/admin), enter the election title, paste the Trustee Master Public Key, set optional start and end timestamps, and confirm initialization.',
-        actionHint: 'The Principal ID you use to create the election becomes the canister administrator.',
+        actionHint: 'The admin token configures and manages the election lifecycle.',
       },
       {
         stepNumber: 3,
@@ -294,7 +294,7 @@ export const ROLE_WALKTHROUGHS: Record<
         stepNumber: 4,
         title: '4. Submit the Chaum-Pedersen decryption proof',
         plainSummary:
-          'Click "Reconstruct, Prove & Finalize Tally". Your browser reconstructs the key in WebAssembly, solves the discrete logarithm for the YES count, generates a Chaum-Pedersen zero-knowledge proof, and submits only the proof and count to the canister.',
+          'Click "Reconstruct, Prove & Finalize Tally". Your browser reconstructs the key in WebAssembly, solves the discrete logarithm for the YES count, generates a Chaum-Pedersen zero-knowledge proof, and submits only the proof and count to the server.',
         actionHint: 'The reconstructed secret key never leaves your browser and is immediately discarded.',
       },
     ],
@@ -316,32 +316,32 @@ export const ADMIN_ELECTION_CHECKLIST: Array<{
   {
     id: 'chk-2',
     phase: 'Phase 1: Setup',
-    title: 'Initialize Election Parameters on Canister',
-    detail: 'Sign in with the Administrator Internet Identity Principal, set the Election Title, Master Public Key, and start/end schedule.',
+    title: 'Initialize Election Parameters on Backend',
+    detail: 'Configure the Election Title, Master Public Key, and start/end schedule in the Admin portal.',
   },
   {
     id: 'chk-3',
     phase: 'Phase 1: Setup',
-    title: 'Register & Audit Eligible Voter Principal IDs',
-    detail: 'Collect voter Principal IDs, submit them via Register Voters, and verify the Registered Voters count on /verify matches the expected roll.',
+    title: 'Register & Issue Single-Use Voter Credentials',
+    detail: 'Issue single-use voter credential codes and distribute them to authorized electors.',
   },
   {
     id: 'chk-4',
     phase: 'Phase 2: Voting',
-    title: 'Transition Canister to Voting Phase',
+    title: 'Transition Backend to Voting Phase',
     detail: 'Open voting and announce the Election ID and /vote URL to registered voters.',
   },
   {
     id: 'chk-5',
     phase: 'Phase 3: Tallying',
     title: 'Close Voting Promptly at the Scheduled Deadline',
-    detail: 'Transition the canister from Voting to Tallying so trustees can submit the Chaum-Pedersen decryption proof.',
+    detail: 'Transition the backend from Voting to Tallying so trustees can submit the Chaum-Pedersen decryption proof.',
   },
   {
     id: 'chk-6',
     phase: 'Phase 4: Complete',
     title: 'Publish Final Verification Parameters',
-    detail: 'Confirm proof_verified is TRUE on /verify and invite observers to run the independent dfx canister call verification commands.',
+    detail: 'Confirm proof_verified is TRUE on /verify and invite observers to run the independent CLI audit commands.',
   },
 ];
 
@@ -380,17 +380,17 @@ export const SECURITY_PROTECTIONS = [
   {
     title: '1-out-of-2 Disjunctive Chaum-Pedersen Range Proof',
     summary:
-      'Every ballot includes a non-interactive zero-knowledge range proof proving that the ciphertext encrypts either 0 (NO) or 1 (YES) under the election’s Trustee Master Public Key. The canister verifies this proof on-chain before adding the ballot to the tally, blocking out-of-range ballot stuffing (such as encrypting 100 or -1).',
+      'Every ballot includes a non-interactive zero-knowledge range proof proving that the ciphertext encrypts either 0 (NO) or 1 (YES) under the election’s Trustee Master Public Key. The server verifies this proof mathematically before adding the ballot to the tally, blocking out-of-range ballot stuffing (such as encrypting 100 or -1).',
   },
   {
     title: 'Deterministic Keccak-256 Nullifiers (Double-Vote Rejection)',
     summary:
-      'Your browser derives a 32-byte nullifier hash from the election ID and your voter secret scalar. The canister stores used nullifiers in a set and rejects any duplicate nullifier without storing which Principal submitted which ciphertext.',
+      'Your browser derives a 32-byte nullifier hash from the election ID and your voter secret scalar. The database stores used nullifiers with a UNIQUE constraint and rejects any duplicate nullifier without storing which voter submitted which ciphertext.',
   },
   {
-    title: 'Homomorphic On-Chain Tallying & Chaum-Pedersen DLEQ Proof Verification',
+    title: 'Homomorphic Server Tallying & Chaum-Pedersen DLEQ Proof Verification',
     summary:
-      'The canister multiplies accepted ciphertexts homomorphically on BN254 G1 without ever holding the decryption key. During Tallying, trustees submit the decrypted count together with a Chaum-Pedersen discrete-log equality proof, which the canister verifies mathematically before marking the election Complete.',
+      'The server multiplies accepted ciphertexts homomorphically on BN254 G1 without ever holding the decryption key. During Tallying, trustees submit the decrypted count together with a Chaum-Pedersen discrete-log equality proof, which the server verifies mathematically before marking the election Complete.',
   },
   {
     title: 'n-of-m Shamir Secret Sharing for Trustee Key Custody',
@@ -416,14 +416,14 @@ export const SECURITY_LIMITATIONS = [
       'Ballot encryption happens in the voter’s browser. If the voter’s computer, operating system, or browser is infected with malware or a malicious extension that intercepts keyboard input or DOM events before WebAssembly encryption runs, ballot privacy and integrity on that device cannot be guaranteed by cryptography.',
   },
   {
-    title: 'Voter Roll & Phase Transitions Controlled by Canister Administrator',
+    title: 'Voter Roll & Phase Transitions Controlled by Server Operator',
     summary:
-      'The Principal ID that initializes the election controls which Principal IDs are added to registered_voters during Setup and when the canister transitions from Setup to Voting and from Voting to Tallying. Observers can audit the registered voter count on-chain, but eligibility admission depends on the administrator.',
+      'The administrator controls which voter credentials are authorized during Setup and when the election transitions from Setup to Voting and from Voting to Tallying. Observers can audit the bulletin board, but eligibility admission depends on the operator.',
   },
   {
-    title: 'On-Chain Call Correlation & Pseudonymous Principal Storage',
+    title: 'Database & Ingress Timing Correlation Risks',
     summary:
-      'When cast_ballot is called, the canister checks that ic_cdk::caller() is in registered_voters. Although the canister stores registered Principals and used nullifiers in separate sets rather than linking a Principal directly to a ciphertext field, an observer monitoring replica ingress traffic timing or canister state snapshots after each single ballot could correlate when a ballot arrived.',
+      'When submit_ballot is called, the server receives the request over HTTPS. Although the database stores credentials and used nullifiers in separate tables rather than linking a credential directly to a ciphertext, a server operator or network eavesdropper monitoring request arrival times could attempt to correlate when a ballot was submitted.',
   },
   {
     title: 'No Independent Third-Party Security Audit',
@@ -443,14 +443,14 @@ export interface RegulatoryFrameworkCitation {
 
 export const REGULATORY_CITATIONS: RegulatoryFrameworkCitation[] = [
   {
-    framework: 'EU General Data Protection Regulation (GDPR) & CNIL Blockchain Guidance',
+    framework: 'EU General Data Protection Regulation (GDPR) & Verifiable Ledger Guidance',
     officialTitle:
-      'Regulation (EU) 2016/679 (Articles 4(1), 5(1)(c), 17, 25, 35) & CNIL Report: "Blockchain and the GDPR: Solutions for a responsible use of the blockchain in the presence of personal data"',
-    authorityAndYear: 'European Parliament & Council (2016); Commission Nationale de l’Informatique et des Libertés (CNIL, September 2018)',
+      'Regulation (EU) 2016/679 (Articles 4(1), 5(1)(c), 17, 25, 35)',
+    authorityAndYear: 'European Parliament & Council (2016); CNIL Guidelines',
     url: 'https://www.cnil.fr/sites/cnil/files/atoms/files/blockchain_en.pdf',
     accessedDate: '2026-10-31',
     relevanceToThisSystem:
-      'Under GDPR Art. 4(1) and CNIL’s 2018 analysis, public keys, Principal IDs, and cryptographic commitments/nullifiers linked to natural persons constitute pseudonymous personal data—not anonymous data. Because canister state on a blockchain is append-only while an election is active, GDPR Art. 17 ("right to erasure") cannot delete individual on-chain records in place. Organizers subject to GDPR must never place names or emails in election titles, must keep voter identity mapping off-chain, and must assess whether a Data Protection Impact Assessment (Art. 35 DPIA) is required before use.',
+      'Under GDPR Art. 4(1), credential codes, public keys, and cryptographic commitments/nullifiers linked to natural persons constitute pseudonymous personal data—not anonymous data. Because the bulletin board uses an append-only trigger while an election is active, individual records cannot be deleted in place. Organizers subject to GDPR must keep voter identity mapping off-chain and assess whether a Data Protection Impact Assessment (Art. 35 DPIA) is required before use.',
   },
   {
     framework: 'Council of Europe Standards for E-Voting',

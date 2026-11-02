@@ -1,0 +1,21 @@
+name: Free-Tier Keep-Alive Ping
+
+on:
+  schedule:
+    # Run every 14 minutes to prevent Render free-tier from idling and sleeping
+    - cron: '*/14 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Render Backend /healthz
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Service Health Endpoint
+        env:
+          RENDER_SERVICE_URL: ${{ secrets.RENDER_SERVICE_URL }}
+        run: |
+          URL="${RENDER_SERVICE_URL:-https://voting-system-api.onrender.com}"
+          echo "Pinging ${URL}/healthz to keep Render free tier warm..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 45 "${URL}/healthz" || true)
+          echo "Status: ${HTTP_STATUS}"

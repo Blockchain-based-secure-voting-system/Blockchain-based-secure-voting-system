@@ -175,19 +175,30 @@ cargo run -p cli -- audit --api-url "http://127.0.0.1:8080" --election-id "<ELEC
 
 ---
 
-## 🌐 Cloud Deployment Architecture (Render + Vercel)
+## 🌐 Automated Free-Tier Cloud Deployment (Render + Vercel)
 
-The system deploys natively across two free/standard tiers:
-1. **Backend (Render)**: Axum API server deployed as a Docker Web Service with managed PostgreSQL via `render.yaml`.
-2. **Frontend (Vercel)**: React + TypeScript + WebAssembly frontend deployed with immutable client build via `frontend/vercel.json`.
+The system is configured for **100% automated continuous deployment** across two generous free tiers:
+1. **Backend & Database (Render Free Tier)**: Axum API server in Docker + PostgreSQL 16 managed database declared via [`render.yaml`](./render.yaml).
+2. **Frontend (Vercel Hobby Tier)**: React + TypeScript + WebAssembly frontend deployed with immutable client build via [`frontend/vercel.json`](./frontend/vercel.json).
 
-### 1. Render Blueprint (`render.yaml`)
+### 1-Click Free Tier Deploy Buttons
 
-The repository includes a root `render.yaml` declaring:
-- Web Service `voting-system-api`: Docker runtime, health check at `/health`, auto-wired `DATABASE_URL` from the managed database, and auto-generated `ADMIN_TOKEN`.
-- Managed PostgreSQL `voting-system-db`: PostgreSQL 16 on Render's managed tier.
+| Component | Target Platform | 1-Click Deploy Link |
+|---|---|---|
+| **Backend & Database** | Render | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Blockchain-based-secure-voting-system/Blockchain-based-secure-voting-system) |
+| **Web Frontend** | Vercel | [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FBlockchain-based-secure-voting-system%2FBlockchain-based-secure-voting-system&root-directory=frontend&env=VITE_API_URL) |
 
-### 2. Honest Trust Model & Operational Constraints
+### 1. Automated Deployment on Git Push
+Every push to `main` triggers:
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): Runs full cryptographic verification, server integration tests, npm audit, Vitest, production grep gate, and Playwright E2E suite.
+- **Render Auto-Sync**: When connected to Render via Blueprint, Render automatically detects commits to `main`, rebuilds the Docker container, and runs all migrations without manual intervention.
+- **Vercel Auto-Sync**: When connected to Vercel with Root Directory set to `frontend`, Vercel automatically compiles and deploys the new release on every push.
+- **Optional Deployment Hook** (`.github/workflows/deploy.yml`): If repository secrets `RENDER_DEPLOY_HOOK_URL` and `VERCEL_TOKEN` are set, GitHub Actions triggers the deployment programmatically.
+
+### 2. Free-Tier Keep-Alive Ping (`.github/workflows/keep_alive.yml`)
+To solve Render's free-tier 15-minute idle spin-down, the repository includes an automated GitHub Actions scheduled workflow that pings the server `/healthz` endpoint every 14 minutes. This keeps the free instance awake 24/7 and eliminates the ~50-second cold start for users.
+
+### 3. Honest Trust Model & Operational Constraints
 
 1. **Operator-Controlled Eligibility**: In this architecture, the server administrator issues single-use credential codes or registers eligible voter IDs. The server operator acts as the gatekeeper of voter registration.
 2. **Append-Only Bulletin Board Integrity**: The bulletin board is stored in PostgreSQL. Immutability is enforced at the database level by the `trg_bulletin_append_only` trigger, which unconditionally rejects any `UPDATE` or `DELETE` statement. Cryptographic auditability is verified by the CLI client (`cli audit`), which independently re-checks the SHA-256 hash chain, range proofs, nullifiers, and tally sum.

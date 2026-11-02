@@ -1,0 +1,49 @@
+name: Automated Free-Tier Deployment
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy-backend:
+    name: Trigger Render Backend Deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy Hook
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
+            echo "Triggering Render automated deployment..."
+            curl -sS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+            echo "Render deployment triggered successfully."
+          else
+            echo "RENDER_DEPLOY_HOOK_URL secret not configured in repository."
+            echo "Note: If your repository is connected to Render via GitHub, Render deploys automatically on push."
+          fi
+
+  deploy-frontend:
+    name: Deploy Frontend to Vercel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js (Pinned v24.15.0)
+        if: env.VERCEL_TOKEN != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build & Deploy to Vercel Production
+        if: env.VERCEL_TOKEN != ''
+        working-directory: frontend
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL || 'https://voting-system-api.onrender.com' }}
+        run: |
+          npm ci
+          npm run build
+          npx --yes vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN"

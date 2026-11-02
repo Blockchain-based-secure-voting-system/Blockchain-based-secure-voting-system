@@ -1,0 +1,8 @@
+target/
+frontend/
+.git/
+.github/
+archive/
+docs/
+*.md
+.githooks/

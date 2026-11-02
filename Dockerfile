@@ -6,6 +6,7 @@ WORKDIR /usr/src/app
 # Copy root manifests and workspace crates
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY cli ./cli
 
 # Build release server binary
 RUN cargo build --release --package server

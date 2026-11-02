@@ -186,7 +186,7 @@ The system is configured for **100% automated continuous deployment** across two
 | Component | Target Platform | 1-Click Deploy Link |
 |---|---|---|
 | **Backend & Database** | Render | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Blockchain-based-secure-voting-system/Blockchain-based-secure-voting-system) |
-| **Web Frontend** | Vercel | [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FBlockchain-based-secure-voting-system%2FBlockchain-based-secure-voting-system&root-directory=frontend&env=VITE_API_URL) |
+| **Web Frontend** | Vercel | [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FBlockchain-based-secure-voting-system%2FBlockchain-based-secure-voting-system&root-directory=frontend&env=VITE_API_URL&envDescription=Render%20Backend%20API%20URL&envLink=https%3A%2F%2Fvoting-system-api-wi7q.onrender.com) |
 
 ### 1. Automated Deployment on Git Push
 Every push to `main` triggers:

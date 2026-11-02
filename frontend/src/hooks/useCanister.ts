@@ -50,7 +50,7 @@ export function resolveConfiguredApiUrl(): string {
   if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
     return 'http://127.0.0.1:8080';
   }
-  return 'https://blockchain-voting-api.onrender.com';
+  return 'https://voting-system-api-wi7q.onrender.com';
 }
 
 export function resolveConfiguredIcHost(explicitEnvHost?: string): string {

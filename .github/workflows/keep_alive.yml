@@ -15,7 +15,7 @@ jobs:
         env:
           RENDER_SERVICE_URL: ${{ secrets.RENDER_SERVICE_URL }}
         run: |
-          URL="${RENDER_SERVICE_URL:-https://voting-system-api.onrender.com}"
+          URL="${RENDER_SERVICE_URL:-https://voting-system-api-wi7q.onrender.com}"
           echo "Pinging ${URL}/healthz to keep Render free tier warm..."
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 45 "${URL}/healthz" || true)
           echo "Status: ${HTTP_STATUS}"

@@ -12,7 +12,7 @@ export interface UseCanisterReturn {
   isDemoExpired?: boolean;
   error: string | null;
   refreshState: () => Promise<void>;
-  getElectionDetails: () => Promise<ElectionDetails>;
+  getElectionDetails: () => Promise<ElectionDetails | null>;
   getEncryptedTally: () => Promise<EncryptedTally | null>;
   createElection: (title: string, trusteePkHex: string, startTime: bigint, endTime: bigint) => Promise<string>;
   registerVoters: (voters: Principal[]) => Promise<bigint>;
@@ -158,12 +158,15 @@ export function useCanister(_identity: Identity | null, _customCanisterId?: stri
     }
   }, []);
 
-  const getElectionDetails = useCallback(async (): Promise<ElectionDetails> => {
+  const getElectionDetails = useCallback(async (): Promise<ElectionDetails | null> => {
     if (isE2EBypassActive()) {
       return e2eStateRef.current.details;
     }
 
     const res = await fetchWithTimeout(`${apiUrl}/api/v1/election`);
+    if (res.status === 404) {
+      return null;
+    }
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Failed to fetch election: ${text}`);
@@ -178,10 +181,10 @@ export function useCanister(_identity: Identity | null, _customCanisterId?: stri
       phase: phaseVariant,
       start_time: BigInt(data.start_time ?? 0),
       end_time: BigInt(data.end_time ?? 0),
-      registered_voters_count: BigInt(data.credentials_issued_count),
-      total_ballots_cast: BigInt(data.ballots_in_log_count),
+      registered_voters_count: BigInt(data.credentials_issued_count ?? 0),
+      total_ballots_cast: BigInt(data.ballots_in_log_count ?? 0),
       final_tally: data.final_tally !== null && data.final_tally !== undefined ? [BigInt(data.final_tally)] : [],
-      proof_verified: data.proof_verified,
+      proof_verified: data.proof_verified ?? false,
     };
   }, [apiUrl, fetchWithTimeout]);
 

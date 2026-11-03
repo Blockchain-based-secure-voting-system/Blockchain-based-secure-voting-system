@@ -129,15 +129,13 @@ export const VoterView: React.FC<{
       setErrorMessage(null);
 
       // 1. Client-Side WASM Encryption & ZK Range Proof Generation
+      const secretToSubmit = voterSecret.trim();
       const wasmBallot = await createClientSideBallot(
         electionDetails.trustee_pk_hex,
-        voterSecret.trim(),
+        secretToSubmit,
         electionIdInput.trim(),
         selectedVote
       );
-
-      // Immediately overwrite secret and plaintext choice in component state before network call
-      clearSensitiveMemory();
 
       const isLocalProofValid = await verifyClientRangeProof(
         electionDetails.trustee_pk_hex,
@@ -147,6 +145,7 @@ export const VoterView: React.FC<{
       );
 
       if (!isLocalProofValid) {
+        clearSensitiveMemory();
         throw new Error('Local client-side ZK range proof validation failed.');
       }
 
@@ -155,7 +154,10 @@ export const VoterView: React.FC<{
         nullifier: wasmBallot.nullifier,
         ciphertext: wasmBallot.ciphertext,
         range_proof: wasmBallot.range_proof,
-      }, voterSecret);
+      }, secretToSubmit);
+
+      // Overwrite secret and plaintext choice immediately after submission
+      clearSensitiveMemory();
 
       const nullifierHex = Array.from(wasmBallot.nullifier)
         .map((b) => b.toString(16).padStart(2, '0'))
@@ -295,9 +297,18 @@ export const VoterView: React.FC<{
         {!auth.isAuthenticated ? (
           <div className="alert alert-info" role="status">
             <Lock size={18} aria-hidden="true" />
-            <span>
-              <strong>Authentication Required:</strong> Sign in with your voter credential above to verify your voter registration.
-            </span>
+            <div className="row-between" style={{ width: '100%' }}>
+              <span>
+                <strong>Authentication Required:</strong> Sign in with your voter credential to verify eligibility and enable ballot buttons.
+              </span>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => void auth.login()}
+              >
+                Sign In to Vote
+              </button>
+            </div>
           </div>
         ) : isRegistered === false ? (
           <div className="alert alert-danger" role="alert">

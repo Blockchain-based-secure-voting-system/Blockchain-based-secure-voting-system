@@ -11,7 +11,7 @@ import {
   validateTimestamps,
 } from '../utils/validation';
 import { mapToSafeErrorMessage } from '../utils/errorMapper';
-import { PlusCircle, UserPlus, Play, Square, AlertCircle, CheckCircle2, AlertTriangle, Lock } from 'lucide-react';
+import { PlusCircle, UserPlus, Play, Square, AlertCircle, CheckCircle2, AlertTriangle, Lock, Key } from 'lucide-react';
 
 export const AdminView: React.FC<{
   canister: UseCanisterReturn;
@@ -29,15 +29,26 @@ export const AdminView: React.FC<{
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingTransition, setPendingTransition] = useState<'open' | 'close' | null>(null);
+  const [adminToken, setAdminToken] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('admin_token') || 'admin_token';
+    }
+    return 'admin_token';
+  });
 
   const phase = electionDetails?.phase;
   const phaseName = getPhaseName(phase);
-  const isSetup = phaseName === 'Setup';
+  const isSetup = !electionDetails || phaseName === 'Setup' || phaseName === 'Not Initialized';
   const isVoting = phaseName === 'Voting';
+  const isAdminAuthenticated = Boolean(adminToken.trim()) || auth.isAuthenticated;
 
   const handleCreateElection = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatusMessage(null);
+
+    if (typeof window !== 'undefined' && adminToken.trim()) {
+      sessionStorage.setItem('admin_token', adminToken.trim());
+    }
 
     const titleCheck = validateElectionTitle(title);
     if (!titleCheck.valid) {
@@ -178,7 +189,33 @@ export const AdminView: React.FC<{
           <PhaseBadge phase={phase} />
         </div>
 
-        {!auth.isAuthenticated && (
+        <div style={{ padding: '0.85rem 1rem', background: 'var(--bg-subtle)', border: '1px solid var(--border-color)', borderRadius: '6px', marginBottom: '1.25rem' }}>
+          <div className="row-between" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div className="stack-xs">
+              <label htmlFor="admin-token-input" className="form-label" style={{ marginBottom: 0 }}>
+                <Key size={14} aria-hidden="true" /> Admin Authorization Secret
+              </label>
+              <span className="text-secondary" style={{ fontSize: '0.78rem' }}>
+                Bearer token used to authorize election administration mutations (default: <code>admin_token</code>).
+              </span>
+            </div>
+            <input
+              id="admin-token-input"
+              type="password"
+              className="form-input text-mono"
+              style={{ maxWidth: '280px', height: '36px' }}
+              value={adminToken}
+              onChange={(e) => {
+                setAdminToken(e.target.value);
+                if (typeof window !== 'undefined') {
+                  sessionStorage.setItem('admin_token', e.target.value);
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {!isAdminAuthenticated && (
           <div className="alert alert-info" role="status">
             <Lock size={18} aria-hidden="true" />
             <span>
@@ -222,7 +259,7 @@ export const AdminView: React.FC<{
                 placeholder="e.g. 2026 Governance Referendum"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                disabled={!auth.isAuthenticated || isSubmitting}
+                disabled={!isAdminAuthenticated || isSubmitting}
               />
             </div>
             <div className="form-group">
@@ -237,7 +274,7 @@ export const AdminView: React.FC<{
                 placeholder="0x04..."
                 value={trusteePk}
                 onChange={(e) => setTrusteePk(e.target.value)}
-                disabled={!auth.isAuthenticated || isSubmitting}
+                disabled={!isAdminAuthenticated || isSubmitting}
               />
             </div>
             <div className="grid-2">
@@ -253,7 +290,7 @@ export const AdminView: React.FC<{
                   min={0}
                   value={startTimeSec}
                   onChange={(e) => setStartTimeSec(e.target.value)}
-                  disabled={!auth.isAuthenticated || isSubmitting}
+                  disabled={!isAdminAuthenticated || isSubmitting}
                 />
               </div>
               <div className="form-group">
@@ -268,14 +305,14 @@ export const AdminView: React.FC<{
                   min={0}
                   value={endTimeSec}
                   onChange={(e) => setEndTimeSec(e.target.value)}
-                  disabled={!auth.isAuthenticated || isSubmitting}
+                  disabled={!isAdminAuthenticated || isSubmitting}
                 />
               </div>
             </div>
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={!auth.isAuthenticated || isSubmitting}
+              disabled={!isAdminAuthenticated || isSubmitting}
             >
               Initialize Election in Setup Phase
             </button>
@@ -304,13 +341,13 @@ export const AdminView: React.FC<{
                 placeholder={'2vxsx-fae\nbkyz2-fmaaa-aaaaa-qaaaq-cai'}
                 value={voterPrincipalsText}
                 onChange={(e) => setVoterPrincipalsText(e.target.value)}
-                disabled={!isSetup || !auth.isAuthenticated || isSubmitting}
+                disabled={!isSetup || !isAdminAuthenticated || isSubmitting}
               />
             </div>
             <button
               type="submit"
               className="btn btn-secondary"
-              disabled={!isSetup || !auth.isAuthenticated || isSubmitting || !voterPrincipalsText.trim()}
+              disabled={!isSetup || !isAdminAuthenticated || isSubmitting || !voterPrincipalsText.trim()}
             >
               Add Voters to Registry
             </button>
@@ -332,7 +369,7 @@ export const AdminView: React.FC<{
             type="button"
             className="btn btn-primary"
             onClick={() => setPendingTransition('open')}
-            disabled={!isSetup || !auth.isAuthenticated || isSubmitting}
+            disabled={!isSetup || !isAdminAuthenticated || isSubmitting}
           >
             <Play size={16} aria-hidden="true" /> Open Voting Phase
           </button>
@@ -340,7 +377,7 @@ export const AdminView: React.FC<{
             type="button"
             className="btn btn-outline-danger"
             onClick={() => setPendingTransition('close')}
-            disabled={!isVoting || !auth.isAuthenticated || isSubmitting}
+            disabled={!isVoting || !isAdminAuthenticated || isSubmitting}
           >
             <Square size={16} aria-hidden="true" /> Close Voting &amp; Begin Tallying
           </button>

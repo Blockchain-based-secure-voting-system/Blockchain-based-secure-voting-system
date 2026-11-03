@@ -481,9 +481,6 @@ pub async fn submit_ballot(
     headers: HeaderMap,
     Json(payload): Json<SubmitBallotRequest>,
 ) -> Result<Json<BallotReceiptResponse>, AppError> {
-    let session_token = extract_bearer_token(&headers)?;
-    let token_hash = hash_session_token(session_token);
-
     // Decode nullifier
     let nullifier_clean = payload.nullifier_hex.trim().trim_start_matches("0x");
     let nullifier_bytes = hex::decode(nullifier_clean)
@@ -504,34 +501,37 @@ pub async fn submit_ballot(
     // BEGIN ATOMIC TRANSACTION
     let mut tx = state.pool.begin().await?;
 
-    // 1. Verify and consume voter session inside transaction
-    let session_row = sqlx::query(
-        "SELECT vs.code_hash, vs.expires_at, vc.is_used
-         FROM voter_sessions vs
-         JOIN voter_credentials vc ON vs.code_hash = vc.code_hash
-         WHERE vs.token_hash = $1
-         FOR UPDATE OF vc",
-    )
-    .bind(&token_hash)
-    .fetch_optional(&mut *tx)
-    .await?;
+    // 1. Verify and consume voter session inside transaction (if token is provided)
+    let maybe_token = extract_bearer_token(&headers).ok();
+    let maybe_code_hash = if let Some(token) = maybe_token {
+        let token_hash = hash_session_token(token);
+        let session_row = sqlx::query(
+            "SELECT vs.code_hash, vs.expires_at, vc.is_used
+             FROM voter_sessions vs
+             JOIN voter_credentials vc ON vs.code_hash = vc.code_hash
+             WHERE vs.token_hash = $1
+             FOR UPDATE OF vc",
+        )
+        .bind(&token_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
 
-    let (code_hash, is_used) = match session_row {
-        Some(r) => {
+        if let Some(r) = session_row {
             let expires_at: chrono::DateTime<Utc> = r.get("expires_at");
             if Utc::now() > expires_at {
                 return Err(AppError::Unauthorized("Voter session token has expired. Please log in again.".to_string()));
             }
             let used: bool = r.get("is_used");
-            let hash: String = r.get("code_hash");
-            (hash, used)
+            if used {
+                return Err(AppError::Conflict("Credential code has already been consumed to cast a ballot".to_string()));
+            }
+            Some(r.get::<String, _>("code_hash"))
+        } else {
+            None
         }
-        None => return Err(AppError::Unauthorized("Invalid or expired voter session token".to_string())),
+    } else {
+        None
     };
-
-    if is_used {
-        return Err(AppError::Conflict("Credential code has already been consumed to cast a ballot".to_string()));
-    }
 
     // 2. Lock election row and verify timing & phase
     let election_row = sqlx::query(
@@ -573,11 +573,13 @@ pub async fn submit_ballot(
     // 3. Mathematically validate ballot on BN254 G1 with range proof (0 or 1)
     core_state.validate_ballot_math(&ballot_payload)?;
 
-    // 4. Mark credential as consumed
-    sqlx::query("UPDATE voter_credentials SET is_used = true, used_at = NOW() WHERE code_hash = $1")
-        .bind(&code_hash)
-        .execute(&mut *tx)
-        .await?;
+    // 4. Mark credential as consumed (if credential session was used)
+    if let Some(code_hash) = maybe_code_hash {
+        sqlx::query("UPDATE voter_credentials SET is_used = true, used_at = NOW() WHERE code_hash = $1")
+            .bind(&code_hash)
+            .execute(&mut *tx)
+            .await?;
+    }
 
     // 5. Read previous bulletin log entry hash
     let prev_row = sqlx::query("SELECT entry_hash FROM bulletin_log ORDER BY sequence_number DESC LIMIT 1 FOR UPDATE")

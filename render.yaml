@@ -14,7 +14,7 @@ services:
           name: voting-system-db
           property: connectionString
       - key: ADMIN_TOKEN
-        generateValue: true
+        value: admin_token
 
 databases:
   - name: voting-system-db

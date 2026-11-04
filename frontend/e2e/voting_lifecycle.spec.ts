@@ -198,7 +198,7 @@ test.describe('ICP Zero-Knowledge Voting UI, Full Lifecycle, IA Routes, Walkthro
 
     // Verify nullifier lookup on /verify
     await page.locator('#nullifier-lookup-input').fill(castNullifierHex);
-    await page.getByRole('button', { name: 'Check Nullifier On-Chain' }).click();
+    await page.getByRole('button', { name: /Check Nullifier/i }).click();
     await expect(page.getByText(/\[RECORDED ON-CHAIN\]:/i)).toBeVisible({ timeout: 15000 });
 
     // 12. Inspect Network Payloads & Outbound Host Allowlist

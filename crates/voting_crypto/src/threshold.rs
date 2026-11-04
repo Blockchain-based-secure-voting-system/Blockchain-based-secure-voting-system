@@ -1,7 +1,6 @@
 use ark_bn254::{Fr, G1Projective};
 use ark_ec::Group;
 use ark_ff::{Field, UniformRand};
-use candid::CandidType;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +16,7 @@ pub struct KeyShare {
 }
 
 /// Hex-serialized key share for transport / CLI storage
-#[derive(CandidType, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HexKeyShare {
     pub index: u64,
     pub share_hex: String,

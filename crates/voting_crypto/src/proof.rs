@@ -1,7 +1,6 @@
 use ark_bn254::{Fr, G1Projective};
 use ark_ec::Group;
 use ark_ff::{PrimeField, UniformRand};
-use candid::CandidType;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tiny_keccak::{Hasher, Keccak};
@@ -23,8 +22,8 @@ pub struct ChaumPedersenProof {
     pub decrypted_tally: u64,
 }
 
-/// Serialized struct of proof for Candid / JSON RPC transport
-#[derive(CandidType, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+/// Serialized struct of proof for JSON RPC transport
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HexChaumPedersenProof {
     pub a_hex: String,
     pub b_hex: String,

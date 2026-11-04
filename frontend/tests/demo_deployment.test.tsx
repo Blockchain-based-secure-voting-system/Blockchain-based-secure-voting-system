@@ -7,8 +7,8 @@ import {
   resolveConfiguredCanisterId,
   resolveConfiguredIcHost,
   useCanister,
+  isLocalReplicaUrl,
 } from '../src/hooks/useCanister';
-import { isLocalReplicaUrl } from '../src/declarations/canister';
 import { isDemoBackendExpiredError } from '../src/utils/errorMapper';
 import { App } from '../src/App';
 

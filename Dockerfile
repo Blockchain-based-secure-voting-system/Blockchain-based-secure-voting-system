@@ -1,6 +1,7 @@
 FROM rust:1-bookworm AS builder
 
 WORKDIR /app
+ENV SQLX_OFFLINE=true
 
 # Copy full workspace context (filtered by .dockerignore)
 COPY . .

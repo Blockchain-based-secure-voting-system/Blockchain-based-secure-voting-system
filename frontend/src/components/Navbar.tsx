@@ -15,7 +15,7 @@ import {
   Compass,
 } from 'lucide-react';
 import type { AuthContextType } from '../hooks/useAuth';
-import type { ElectionPhase } from '../declarations/canister/canister.did';
+import type { ElectionPhase } from '../types/election';
 import type { RoutePath, WalkthroughRole } from '../content/copy';
 import { getPhaseName } from './PhaseBadge';
 

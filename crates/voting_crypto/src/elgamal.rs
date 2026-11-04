@@ -2,7 +2,6 @@ use ark_bn254::{Fr, G1Projective};
 use ark_ec::Group;
 use ark_ff::UniformRand;
 use ark_std::Zero;
-use candid::CandidType;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
@@ -85,8 +84,8 @@ impl Ciphertext {
     }
 }
 
-/// Serialized representation of a Ciphertext for transport (Candid / JSON / Hex)
-#[derive(CandidType, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+/// Serialized representation of a Ciphertext for transport (JSON / Hex)
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HexCiphertext {
     pub c1_hex: String,
     pub c2_hex: String,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { GLOSSARY, type GlossaryKey, type RoutePath, type ScreenOrientation, type WalkthroughRole } from '../content/copy';
 import { formatCanisterTime, isVotingDeadlineExpiredButPhaseOpen, PHASE_VOCABULARY, resolvePhaseKey } from '../content/errors';
-import type { ElectionDetails } from '../declarations/canister/canister.did';
+import type { ElectionDetails } from '../types/election';
 
 interface GlossaryTermProps {
   term: GlossaryKey;

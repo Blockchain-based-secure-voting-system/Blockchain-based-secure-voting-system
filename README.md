@@ -57,7 +57,7 @@ A production-quality, privacy-preserving, zero-knowledge electronic voting syste
 - **Discrete Log Solver**: $M_{\text{total}}$ is recovered from $D = M_{\text{total}} \cdot G$ using the **Baby-Step Giant-Step (BSGS)** algorithm in $O(\sqrt{M})$ time.
 
 ### 3. Threshold Key Custody (n-of-m Shamir Secret Sharing)
-- **Threshold Scheme**: $n$-of-$m$ polynomial Shamir Secret Sharing over scalar field $\mathbb{F}_q$.
+- **Threshold Scheme**: $nn\$-of-\$ polynomial Shamir Secret Sharing over scalar field $\mathbb{F}_q$.
 - **Polynomial**: $f(x) = sk + a_1 x + a_2 x^2 + \dots + a_{n-1} x^{n-1} \pmod q$.
 - **Lagrange Interpolation**: Any $n$ trustee shares $(i, f(i))$ compute Lagrange basis coefficients $\lambda_i = \prod_{j \neq i} \frac{-x_j}{x_i - x_j} \pmod q$ to reconstruct $sk = \sum_{i=1}^n \lambda_i f(i) \pmod q$ or combine partial decryption factors $W = \sum_{i=1}^n \lambda_i W_i = sk \cdot C_1$.
 
@@ -68,7 +68,7 @@ To prevent malicious voters from encrypting out-of-range scalars ($m > 1$ or neg
 - **Branch 1 ($m=1$)**: $(C_1, C_2 - G) = (r \cdot G, r \cdot PK)$
 - **Fiat-Shamir Joint Challenge**:
   $$c = \text{Keccak256}(\text{"DISJUNCTIVE_RANGE_PROOF_BN254_V1"} \parallel G \parallel PK \parallel C_1 \parallel C_2 \parallel a_0 \parallel b_0 \parallel a_1 \parallel b_1) \pmod q$$
-- **Verification Equations (On-Chain Canister)**:
+- **Verification Equations (Server API)**:
   $$c_0 + c_1 \stackrel{?}{=} c, \qquad s_0 \cdot G \stackrel{?}{=} a_0 + c_0 \cdot C_1, \qquad s_0 \cdot PK \stackrel{?}{=} b_0 + c_0 \cdot C_2$$
   $$s_1 \cdot G \stackrel{?}{=} a_1 + c_1 \cdot C_1, \qquad s_1 \cdot PK \stackrel{?}{=} b_1 + c_1 \cdot (C_2 - G)$$
 
@@ -77,13 +77,32 @@ To prevent malicious voters from encrypting out-of-range scalars ($m > 1$ or neg
 - **Commitment**: $A = k \cdot G$, $B = k \cdot C_{1,\text{sum}}$.
 - **Fiat-Shamir Challenge**:
   $$c = \text{Keccak256}(\text{"CHAUM_PEDERSEN_BN254_V1"} \parallel G \parallel PK \parallel C_{1,\text{sum}} \parallel W \parallel A \parallel B) \pmod q$$
-- **Verification Equations (On-Chain Canister)**:
+- **Verification Equations (Server API)**:
   $$s \cdot G \stackrel{?}{=} A + c \cdot PK, \qquad s \cdot C_{1,\text{sum}} \stackrel{?}{=} B + c \cdot W, \qquad C_{2,\text{sum}} - W \stackrel{?}{=} M_{\text{total}} \cdot G$$
 
 ### 6. Nullifier & Double-Voting Prevention
 - Each ballot includes a deterministic 32-byte nullifier:
   $$\text{nullifier} = \text{Keccak256}(\text{"VOTING_NULLIFIER_V1"} \parallel \text{voter_secret} \parallel \text{election_id})$$
-- Recorded in canister stable memory (`BTreeSet<[u8; 32]>`). Replayed nullifiers are rejected with `Double-vote detected`.
+- Recorded in PostgreSQL database table with unique constraint (`UNIQUE(election_id, nullifier)`). Replayed nullifiers are rejected with `Double-vote detected`.
+
+---
+
+## 🔒 Trust Model & Security Considerations
+
+This system utilizes a centralized backend (Axum + PostgreSQL) with client-side zero-knowledge cryptography:
+1. **Centralized Operator Authority**:
+   - The server administrator controls voter eligibility and single-use credential code issuance, ballot inclusion on the bulletin board, election lifecycle phase transitions (Setup -> Voting -> Tallying -> Complete), and server infrastructure availability.
+   - The centralized operator has the technical capability to censor ballots or refuse connections, but **cannot decrypt individual voter ballots or forge election outcomes** without breaking discrete logarithm hardness on BN254.
+2. **End-to-End Ballot Privacy**:
+   - Ballots are encrypted entirely client-side inside the browser WebAssembly module using BN254 Exponential ElGamal. Plaintext votes ( \in \{0, 1\}$) never traverse the network.
+3. **Public Verifiability**:
+   - Every cast ballot includes a non-interactive 1-out-of-2 Disjunctive Chaum-Pedersen zero-knowledge range proof that the encrypted vote is valid (0 or 1) without revealing the vote.
+   - The bulletin board hash-chain (prev_hash integrity checks) and homomorphic tally summation are verifiable by any public auditor.
+   - Final decryption proofs (Chaum-Pedersen DLEQ) are mathematically verified against trustee public keys.
+4. **Threshold Custody**:
+   - When configured with n-of-m Shamir Secret Sharing, no single trustee can decrypt the tally unilaterally. Decryption requires n independent trustee partial decryption factors.
+5. **Audit Status**:
+   - This codebase is an unaudited reference implementation and must not be used for binding public elections without an independent security and cryptographic audit.
 
 ---
 

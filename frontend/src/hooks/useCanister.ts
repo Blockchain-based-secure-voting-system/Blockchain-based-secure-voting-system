@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Principal, type Identity } from '../types/principal';
-import type { ElectionDetails, EncryptedTally, Ballot, HexChaumPedersenProof } from '../declarations/canister/canister.did';
+import type { ElectionDetails, EncryptedTally, Ballot, HexChaumPedersenProof } from '../types/election';
 import { ENABLE_E2E_TEST_BYPASS } from '../config/buildFlags.json';
 import { mapToSafeErrorMessage, isDemoBackendExpiredError } from '../utils/errorMapper';
 

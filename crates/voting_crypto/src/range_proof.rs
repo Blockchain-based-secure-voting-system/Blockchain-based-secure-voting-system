@@ -1,7 +1,6 @@
 use ark_bn254::{Fr, G1Projective};
 use ark_ec::Group;
 use ark_ff::{PrimeField, UniformRand};
-use candid::CandidType;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use tiny_keccak::{Hasher, Keccak};
@@ -25,8 +24,8 @@ pub struct DisjunctiveRangeProof {
     pub s1: Fr,
 }
 
-/// Hex-serialized representation of Disjunctive Range Proof for transport (Candid / JSON RPC)
-#[derive(CandidType, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+/// Hex-serialized representation of Disjunctive Range Proof for transport (JSON RPC)
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HexDisjunctiveRangeProof {
     pub a0_hex: String,
     pub b0_hex: String,

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ElectionPhase } from '../declarations/canister/canister.did';
+import type { ElectionPhase } from '../types/election';
 
 export function getPhaseName(phase?: ElectionPhase | null): 'Not Initialized' | 'Setup' | 'Voting' | 'Tallying' | 'Complete' {
   if (!phase) return 'Not Initialized';

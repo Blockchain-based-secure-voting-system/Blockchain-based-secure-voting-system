@@ -1,4 +1,4 @@
-import type { ElectionPhase } from '../declarations/canister/canister.did';
+import type { ElectionPhase } from '../types/election';
 
 /**
  * Single source of truth mapping every canister ElectionPhase variant and

@@ -89,7 +89,7 @@ test.describe('ICP Zero-Knowledge Voting UI, Full Lifecycle, IA Routes, Walkthro
     await page.getByRole('button', { name: 'Open Guided Role Walkthrough' }).click();
     const walkthroughModal = page.getByTestId('walkthrough-modal');
     await expect(walkthroughModal).toBeVisible();
-    await expect(walkthroughModal).toContainText('1. Sign in with Internet Identity');
+    await expect(walkthroughModal).toContainText('1. Sign in with Voter Credential');
     await page.keyboard.press('ArrowRight');
     await expect(walkthroughModal).toContainText('2. Confirm your voter eligibility');
     await page.keyboard.press('Escape');

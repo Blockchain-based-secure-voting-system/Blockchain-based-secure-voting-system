@@ -17,7 +17,7 @@ import { mapToSafeErrorMessage } from '../src/utils/errorMapper';
 import { DESIGN_TOKENS, getContrastRatio } from '../src/styles/tokens';
 import { VoterView } from '../src/views/VoterView';
 import { TrusteeView } from '../src/views/TrusteeView';
-import type { UseCanisterReturn } from '../src/hooks/useCanister';
+import type { UseElectionReturn as UseCanisterReturn } from '../src/hooks/useElection';
 import type { AuthContextType } from '../src/hooks/useAuth';
 import { Principal } from '../src/types/principal';
 
@@ -146,7 +146,7 @@ describe('Voter & Trustee Secret-Clearing Behavior (Unmount & Pagehide)', () => 
       sessionToken: null,
     };
 
-    const { unmount } = render(<VoterView canister={mockCanister} auth={mockAuth} />);
+    const { unmount } = render(<VoterView election={mockCanister} auth={mockAuth} />);
     const secretInput = screen.getByLabelText(/Voter Secret Passphrase/i) as HTMLInputElement;
     fireEvent.change(secretInput, { target: { value: 'my_top_secret_passphrase' } });
     expect(secretInput.value).toBe('my_top_secret_passphrase');
@@ -193,7 +193,7 @@ describe('Voter & Trustee Secret-Clearing Behavior (Unmount & Pagehide)', () => 
       hasNullifierBeenUsed: vi.fn(),
     };
 
-    render(<TrusteeView canister={mockCanister} />);
+    render(<TrusteeView election={mockCanister} />);
     const textarea = screen.getByLabelText(/Input Threshold Shares/i) as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: '1:0xabcd\n2:0xef01' } });
     expect(textarea.value).toBe('1:0xabcd\n2:0xef01');

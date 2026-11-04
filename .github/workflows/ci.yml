@@ -63,14 +63,57 @@ jobs:
       - name: Run Cargo Clippy (Server Crate)
         run: cargo clippy --package server --all-targets -- -D warnings
 
+      - name: Build Axum Server Binary for E2E
+        run: cargo build --package server --locked
+
+      - name: Upload Server Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-bin
+          path: target/debug/server
+
   frontend:
     name: Run Frontend Security Audit, Build, Grep, Headers, Axe & Playwright E2E
     runs-on: ubuntu-latest
+    needs: test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: voting_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download Server Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: server-bin
+          path: /tmp/server-bin
+
+      - name: Start Real Axum Server + PostgreSQL
+        run: |
+          chmod +x /tmp/server-bin/server
+          DATABASE_URL="postgres://postgres:postgres@localhost:5432/voting_test" ADMIN_TOKEN="admin_token" PORT=8080 /tmp/server-bin/server &
+          for i in $(seq 1 30); do
+            if curl -sI http://localhost:8080/healthz | grep -q "200 OK"; then
+              echo "Real Axum Server running on port 8080"
+              break
+            fi
+            sleep 1
+          done
+          curl -i http://localhost:8080/healthz
 
       - name: Setup Node.js (Pinned v24.15.0)
         uses: actions/setup-node@v4
@@ -89,6 +132,8 @@ jobs:
         run: npm test
 
       - name: Build Production Frontend Bundle (dist/)
+        env:
+          VITE_API_URL: http://localhost:8080
         run: npm run build
 
       - name: Verify Zero Test-Bypass Code in Production Bundle (dist/ Grep Gate)
@@ -103,6 +148,8 @@ jobs:
           sha256sum dist/assets/*.wasm src/crypto/pkg/voting_crypto_wasm_bg.wasm
 
       - name: Build Separate E2E Frontend Bundle (dist-e2e/)
+        env:
+          VITE_API_URL: http://localhost:8080
         run: npm run build:e2e
 
       - name: Verify Security & CSP Headers (curl -I Check)
@@ -127,5 +174,8 @@ jobs:
       - name: Install Playwright Chromium Browser
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright E2E, CSP Violation Check, Network Trace & Axe Accessibility Suite
+      - name: Run Playwright E2E against Real Server + PostgreSQL
+        env:
+          USE_LIVE_REPLICA: 'true'
+          VITE_API_URL: http://localhost:8080
         run: npx playwright test

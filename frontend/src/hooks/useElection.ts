@@ -4,7 +4,7 @@ import type { ElectionDetails, EncryptedTally, Ballot, HexChaumPedersenProof } f
 import { ENABLE_E2E_TEST_BYPASS } from '../config/buildFlags.json';
 import { mapToSafeErrorMessage, isDemoBackendExpiredError } from '../utils/errorMapper';
 
-export interface UseCanisterReturn {
+export interface UseElectionReturn {
   electionDetails: ElectionDetails | null;
   encryptedTally: EncryptedTally | null;
   loading: boolean;
@@ -24,6 +24,8 @@ export interface UseCanisterReturn {
   isRegisteredVoter: (principal: Principal) => Promise<boolean>;
   hasNullifierBeenUsed: (nullifier: Uint8Array | number[]) => Promise<boolean>;
 }
+
+
 
 export function isLocalReplicaUrl(hostUrl: string): boolean {
   try {
@@ -77,17 +79,7 @@ export function setMemoryVoterSessionToken(token: string | null) {
   memoryVoterSessionToken = token;
 }
 
-export function resolveConfiguredCanisterId(customCanisterId?: string): string {
-  if (customCanisterId && customCanisterId.trim().length > 0) {
-    return customCanisterId.trim();
-  }
-  const envMeta = (typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: Record<string, string | undefined> }).env) || {};
-  const fromEnv =
-    (typeof process !== 'undefined' ? process?.env?.VITE_CANISTER_ID || process?.env?.CANISTER_ID_CANISTER : undefined) ||
-    envMeta.VITE_CANISTER_ID ||
-    envMeta.VITE_CANISTER_ID_CANISTER;
-  return (fromEnv && fromEnv.trim()) || 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
-}
+
 
 export function shouldFetchRootKey(host: string): boolean {
   return isLocalReplicaUrl(host);
@@ -105,7 +97,7 @@ function isE2EBypassActive(): boolean {
   return (window as any).__E2E_TEST_AUTH__ === true;
 }
 
-export function useCanister(_identity: Identity | null, _customCanisterId?: string): UseCanisterReturn {
+export function useElection(_identity: Identity | null, _customElectionId?: string): UseElectionReturn {
   const [electionDetails, setElectionDetails] = useState<ElectionDetails | null>(null);
   const [encryptedTally, setEncryptedTally] = useState<EncryptedTally | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -489,3 +481,5 @@ export function useCanister(_identity: Identity | null, _customCanisterId?: stri
     hasNullifierBeenUsed,
   };
 }
+
+

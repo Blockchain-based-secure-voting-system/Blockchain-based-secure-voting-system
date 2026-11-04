@@ -3,13 +3,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   PHASE_VOCABULARY,
-  formatCanisterTime,
+  formatElectionTime,
   isVotingDeadlineExpiredButPhaseOpen,
 } from '../src/content/errors';
 
 const ROOT_DIR = path.resolve(__dirname, '../..');
 const OPENAPI_PATH = path.join(ROOT_DIR, 'docs/openapi.json');
-const USE_CANISTER_PATH = path.join(ROOT_DIR, 'frontend/src/hooks/useCanister.ts');
+const USE_CANISTER_PATH = fs.existsSync(path.join(ROOT_DIR, 'frontend/src/hooks/useCanister.ts')) ? path.join(ROOT_DIR, 'frontend/src/hooks/useCanister.ts') : path.join(ROOT_DIR, 'frontend/src/hooks/useElection.ts');
 
 describe('Part 1: Backend Alignment & REST API Specification Suite', () => {
   it('verifies docs/openapi.json exists and contains all required Axum REST endpoints', () => {
@@ -71,12 +71,12 @@ describe('Part 1: Backend Alignment & REST API Specification Suite', () => {
   it('formats nanosecond and second server timestamps in local time with UTC details and detects expired voting windows', () => {
     // 2026-10-31T12:00:00Z in Unix seconds
     const secTimestamp = 1793448000n;
-    const formatted = formatCanisterTime(secTimestamp);
+    const formatted = formatElectionTime(secTimestamp);
     expect(formatted.isSet).toBe(true);
     expect(formatted.utcFormatted).toBe('2026-10-31 12:00:00 UTC');
     expect(formatted.localFormatted.length).toBeGreaterThan(5);
 
-    const zeroFormatted = formatCanisterTime(0n);
+    const zeroFormatted = formatElectionTime(0n);
     expect(zeroFormatted.isSet).toBe(false);
     expect(zeroFormatted.localFormatted).toContain('No time limit configured');
 

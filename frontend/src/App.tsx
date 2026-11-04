@@ -10,7 +10,7 @@ import { HelpView } from './views/HelpView';
 import { WalkthroughModal } from './components/WalkthroughModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAuth } from './hooks/useAuth';
-import { useCanister } from './hooks/useCanister';
+import { useElection } from './hooks/useElection';
 import { ROUTES, type RoutePath, type WalkthroughRole } from './content/copy';
 import { AlertCircle, RefreshCw, Clock } from 'lucide-react';
 
@@ -40,7 +40,7 @@ export function App() {
   const [walkthroughRole, setWalkthroughRole] = useState<WalkthroughRole>('voter');
 
   const auth = useAuth();
-  const canister = useCanister(auth.identity);
+  const election = useElection(auth.identity);
 
   const navigateTo = useCallback((path: RoutePath) => {
     if (typeof window !== 'undefined') {
@@ -95,7 +95,7 @@ export function App() {
           auth={auth}
           theme={theme}
           onToggleTheme={handleToggleTheme}
-          phase={canister.electionDetails?.phase}
+          phase={election.electionDetails?.phase}
         />
 
         <div className="alert alert-info" role="note" aria-label="System Architecture Notice" data-testid="demo-notice-banner">
@@ -110,7 +110,7 @@ export function App() {
           </div>
         </div>
 
-        {canister.isDemoExpired && (
+        {election.isDemoExpired && (
           <div className="alert alert-danger" role="alert" aria-live="assertive" data-testid="demo-expired-banner">
             <AlertCircle size={18} aria-hidden="true" />
             <div className="row-between" style={{ width: '100%' }}>
@@ -121,8 +121,8 @@ export function App() {
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                onClick={canister.refreshState}
-                disabled={canister.loading}
+                onClick={election.refreshState}
+                disabled={election.loading}
               >
                 <RefreshCw size={14} aria-hidden="true" /> Retry Connection
               </button>
@@ -145,33 +145,33 @@ export function App() {
           </div>
         )}
 
-        {canister.isSlowNetwork && canister.loading && (
+        {election.isSlowNetwork && election.loading && (
           <div className="alert alert-info" role="status" aria-live="polite" data-testid="slow-network-banner">
             <Clock size={18} aria-hidden="true" />
             <div className="row-between" style={{ width: '100%' }}>
               <span>
-                <strong>[SLOW NETWORK DETECTED]:</strong> Server verification is taking longer than expected (&gt;3s).
+                <strong>[SERVER IS WAKING UP]:</strong> Connecting to centralized Axum server on Render (~30-60s on free-tier cold start).
                 The backend server may be busy processing cryptographic operations.
               </span>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={canister.refreshState}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={election.refreshState}>
                 <RefreshCw size={14} aria-hidden="true" /> Retry Now
               </button>
             </div>
           </div>
         )}
 
-        {canister.error && (
-          <div className="alert alert-danger" role="alert" aria-live="assertive" data-testid="canister-error-banner">
+        {election.error && (
+          <div className="alert alert-danger" role="alert" aria-live="assertive" data-testid="backend-error-banner">
             <AlertCircle size={18} aria-hidden="true" />
             <div className="row-between" style={{ width: '100%' }}>
               <span>
-                <strong>[BACKEND CONNECTION ERROR]:</strong> {canister.error}
+                <strong>[BACKEND CONNECTION ERROR]:</strong> {election.error}
               </span>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                onClick={canister.refreshState}
-                disabled={canister.loading}
+                onClick={election.refreshState}
+                disabled={election.loading}
               >
                 <RefreshCw size={14} aria-hidden="true" /> Retry Connection
               </button>
@@ -182,21 +182,21 @@ export function App() {
         <main id="main-content" aria-label="Election Portal Content" tabIndex={-1}>
           {currentPath === '/' && (
             <HomeView
-              canister={canister}
+              election={election}
               onNavigate={navigateTo}
               onOpenWalkthrough={handleOpenWalkthrough}
             />
           )}
           {currentPath === '/verify' && (
             <PublicView
-              canister={canister}
+              election={election}
               onNavigate={navigateTo}
               onOpenWalkthrough={handleOpenWalkthrough}
             />
           )}
           {currentPath === '/vote' && (
             <VoterView
-              canister={canister}
+              election={election}
               auth={auth}
               onNavigate={navigateTo}
               onOpenWalkthrough={handleOpenWalkthrough}
@@ -204,7 +204,7 @@ export function App() {
           )}
           {currentPath === '/admin' && (
             <AdminView
-              canister={canister}
+              election={election}
               auth={auth}
               onNavigate={navigateTo}
               onOpenWalkthrough={handleOpenWalkthrough}
@@ -212,21 +212,21 @@ export function App() {
           )}
           {currentPath === '/trustee' && (
             <TrusteeView
-              canister={canister}
+              election={election}
               onNavigate={navigateTo}
               onOpenWalkthrough={handleOpenWalkthrough}
             />
           )}
           {currentPath === '/learn' && (
             <LearnView
-              canister={canister}
+              election={election}
               onNavigate={navigateTo}
               onOpenWalkthrough={handleOpenWalkthrough}
             />
           )}
           {currentPath === '/help' && (
             <HelpView
-              canister={canister}
+              election={election}
               onNavigate={navigateTo}
               onOpenWalkthrough={handleOpenWalkthrough}
             />

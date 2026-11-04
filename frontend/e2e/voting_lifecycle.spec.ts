@@ -15,7 +15,7 @@ function validateZeroPlaintextLeakage(postData: string) {
   }
 }
 
-test.describe('ICP Zero-Knowledge Voting UI, Full Lifecycle, IA Routes, Walkthrough, CSP, Accessibility & Network Security', () => {
+test.describe('Zero-Knowledge Secure Voting UI, Full Lifecycle, IA Routes, Walkthrough, CSP, Accessibility & Network Security', () => {
   test('should navigate all 7 routes with browser back/forward, run guided walkthrough, execute full election lifecycle + double-vote rejection, verify network host allowlist, and assert zero plaintext leakage', async ({ page }) => {
     const capturedRequests: Array<{ url: string; method: string; postData: string | null }> = [];
     const contactedHosts = new Set<string>();
@@ -168,7 +168,7 @@ test.describe('ICP Zero-Knowledge Voting UI, Full Lifecycle, IA Routes, Walkthro
     expect(receiptSectionText).not.toContain('super_secret_voter_123');
     expect(receiptSectionText).not.toContain('YES (1)');
 
-    // 8b. Attempt a double-vote with the same secret and verify canister/UI rejection
+    // 8b. Attempt a double-vote with the same secret and verify server/UI rejection
     await page.getByRole('button', { name: 'Cast Another / Return' }).click();
     await page.getByRole('button', { name: 'NO (0)' }).click();
     await page.getByPlaceholder('Enter secret passphrase (kept only in browser memory)').fill('super_secret_voter_123');

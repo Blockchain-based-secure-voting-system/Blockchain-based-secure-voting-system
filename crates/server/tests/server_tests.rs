@@ -592,3 +592,383 @@ fn test_export_openapi_spec() {
     assert!(spec.contains("/api/v1/bulletin"));
     let _ = std::fs::write("openapi.json", &spec);
 }
+
+#[tokio::test]
+async fn test_admin_auth_no_token_returns_401() {
+    let ctx = setup_test_app().await;
+    let client = reqwest::Client::new();
+    let res = client
+        .post(format!("{}/api/v1/admin/election", ctx.base_url))
+        .json(&CreateElectionRequest {
+            title: "Test".to_string(),
+            trustee_pk_hex: "00".to_string(),
+            start_time: None,
+            end_time: None,
+        })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_admin_auth_wrong_token_returns_401() {
+    let ctx = setup_test_app().await;
+    let client = reqwest::Client::new();
+    let res = client
+        .post(format!("{}/api/v1/admin/election", ctx.base_url))
+        .header("Authorization", "Bearer invalid_secret_token_abc123")
+        .json(&CreateElectionRequest {
+            title: "Test".to_string(),
+            trustee_pk_hex: "00".to_string(),
+            start_time: None,
+            end_time: None,
+        })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[test]
+fn test_server_refuses_to_start_without_admin_token() {
+    assert!(!server::auth::verify_admin_token("some_token", ""));
+    assert!(!server::auth::verify_admin_token("", "some_secret"));
+    assert!(!server::auth::verify_admin_token("", ""));
+}
+
+#[tokio::test]
+async fn test_nullifier_race_exactly_one_wins_and_failing_twin() {
+    let ctx = setup_test_app().await;
+    let client = reqwest::Client::new();
+    let mut rng = rand::thread_rng();
+    let keypair = KeyPair::generate(&mut rng);
+
+    client
+        .post(format!("{}/api/v1/admin/election", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .json(&CreateElectionRequest {
+            title: "Nullifier Race Test".to_string(),
+            trustee_pk_hex: keypair.pk.to_hex(),
+            start_time: None,
+            end_time: None,
+        })
+        .send()
+        .await
+        .unwrap();
+
+    let res = client
+        .post(format!("{}/api/v1/admin/credentials", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .json(&IssueCredentialsRequest { count: 2 })
+        .send()
+        .await
+        .unwrap();
+    let issue_resp: IssueCredentialsResponse = res.json().await.unwrap();
+
+    client
+        .post(format!("{}/api/v1/admin/open-voting", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .send()
+        .await
+        .unwrap();
+
+    let login0: VoterLoginResponse = client
+        .post(format!("{}/api/v1/voter/login", ctx.base_url))
+        .json(&VoterLoginRequest {
+            credential_code: issue_resp.credentials[0].clone(),
+        })
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    let login1: VoterLoginResponse = client
+        .post(format!("{}/api/v1/voter/login", ctx.base_url))
+        .json(&VoterLoginRequest {
+            credential_code: issue_resp.credentials[1].clone(),
+        })
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    let duplicate_nullifier = [0x77u8; 32];
+    let r = Fr::rand(&mut rng);
+    let ct = encrypt_with_randomness(&keypair.pk, 1, &r);
+    let proof = generate_range_proof(&keypair.pk, &ct, 1, &r, &mut rng).unwrap();
+
+    let ballot_submission = SubmitBallotRequest {
+        nullifier_hex: hex::encode(duplicate_nullifier),
+        ciphertext: HexCiphertext::from_ciphertext(&ct),
+        range_proof: HexDisjunctiveRangeProof::from_proof(&proof),
+    };
+
+    let f0 = client
+        .post(format!("{}/api/v1/ballots", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", login0.session_token))
+        .json(&ballot_submission)
+        .send();
+
+    let f1 = client
+        .post(format!("{}/api/v1/ballots", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", login1.session_token))
+        .json(&ballot_submission)
+        .send();
+
+    let (r0, r1) = tokio::join!(f0, f1);
+    let s0 = r0.unwrap().status();
+    let s1 = r1.unwrap().status();
+
+    let statuses = vec![s0, s1];
+    assert!(statuses.contains(&StatusCode::OK), "At least one request must succeed");
+    assert!(statuses.contains(&StatusCode::CONFLICT), "Duplicate request must be rejected with 409");
+
+    let twin_err = sqlx::query(
+        "INSERT INTO bulletin_log (sequence_number, prev_hash, entry_hash, nullifier_hex, ciphertext_c1_hex, ciphertext_c2_hex, range_proof_json)
+         VALUES (888, '00', '00', $1, '00', '00', '{}')"
+    )
+    .bind(hex::encode(duplicate_nullifier))
+    .execute(&ctx.pool)
+    .await;
+    assert!(twin_err.is_err(), "Relational database unique index must reject duplicate nullifier");
+}
+
+#[tokio::test]
+async fn test_credential_reuse_prevention_and_failing_twin() {
+    let ctx = setup_test_app().await;
+    let client = reqwest::Client::new();
+    let mut rng = rand::thread_rng();
+    let keypair = KeyPair::generate(&mut rng);
+
+    client
+        .post(format!("{}/api/v1/admin/election", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .json(&CreateElectionRequest {
+            title: "Credential Reuse Test".to_string(),
+            trustee_pk_hex: keypair.pk.to_hex(),
+            start_time: None,
+            end_time: None,
+        })
+        .send()
+        .await
+        .unwrap();
+
+    let res = client
+        .post(format!("{}/api/v1/admin/credentials", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .json(&IssueCredentialsRequest { count: 1 })
+        .send()
+        .await
+        .unwrap();
+    let issue_resp: IssueCredentialsResponse = res.json().await.unwrap();
+    let cred = issue_resp.credentials[0].clone();
+
+    client
+        .post(format!("{}/api/v1/admin/open-voting", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .send()
+        .await
+        .unwrap();
+
+    let login_res = client
+        .post(format!("{}/api/v1/voter/login", ctx.base_url))
+        .json(&VoterLoginRequest {
+            credential_code: cred.clone(),
+        })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login_res.status(), StatusCode::OK);
+    let login: VoterLoginResponse = login_res.json().await.unwrap();
+
+    let ballot = sample_ballot(&keypair.pk, 1, cred.as_bytes(), "default_election");
+    let cast_res = client
+        .post(format!("{}/api/v1/ballots", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", login.session_token))
+        .json(&ballot)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cast_res.status(), StatusCode::OK);
+
+    let second_login_res = client
+        .post(format!("{}/api/v1/voter/login", ctx.base_url))
+        .json(&VoterLoginRequest {
+            credential_code: cred.clone(),
+        })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second_login_res.status(), StatusCode::UNAUTHORIZED);
+
+    let second_ballot = sample_ballot(&keypair.pk, 0, b"fresh_secret", "default_election");
+    let second_cast_res = client
+        .post(format!("{}/api/v1/ballots", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", login.session_token))
+        .json(&second_ballot)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second_cast_res.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_wrong_phase_transition_rejection_and_failing_twin() {
+    let ctx = setup_test_app().await;
+    let client = reqwest::Client::new();
+    let mut rng = rand::thread_rng();
+    let keypair = KeyPair::generate(&mut rng);
+
+    client
+        .post(format!("{}/api/v1/admin/election", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .json(&CreateElectionRequest {
+            title: "Wrong Phase Test".to_string(),
+            trustee_pk_hex: keypair.pk.to_hex(),
+            start_time: None,
+            end_time: None,
+        })
+        .send()
+        .await
+        .unwrap();
+
+    let res = client
+        .post(format!("{}/api/v1/admin/credentials", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .json(&IssueCredentialsRequest { count: 1 })
+        .send()
+        .await
+        .unwrap();
+    let issue_resp: IssueCredentialsResponse = res.json().await.unwrap();
+    let cred = issue_resp.credentials[0].clone();
+
+    let login_res = client
+        .post(format!("{}/api/v1/voter/login", ctx.base_url))
+        .json(&VoterLoginRequest { credential_code: cred.clone() })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login_res.status(), StatusCode::BAD_REQUEST);
+
+    client
+        .post(format!("{}/api/v1/admin/open-voting", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .send()
+        .await
+        .unwrap();
+
+    let open_again_res = client
+        .post(format!("{}/api/v1/admin/open-voting", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(open_again_res.status(), StatusCode::BAD_REQUEST);
+
+    client
+        .post(format!("{}/api/v1/admin/close-voting", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .send()
+        .await
+        .unwrap();
+
+    let login_tallying = client
+        .post(format!("{}/api/v1/voter/login", ctx.base_url))
+        .json(&VoterLoginRequest { credential_code: cred.clone() })
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login_tallying.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_hash_chain_verification_and_failing_twin() {
+    let ctx = setup_test_app().await;
+    let client = reqwest::Client::new();
+    let mut rng = rand::thread_rng();
+    let keypair = KeyPair::generate(&mut rng);
+
+    client
+        .post(format!("{}/api/v1/admin/election", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .json(&CreateElectionRequest {
+            title: "Hash Chain Test".to_string(),
+            trustee_pk_hex: keypair.pk.to_hex(),
+            start_time: None,
+            end_time: None,
+        })
+        .send()
+        .await
+        .unwrap();
+
+    let res = client
+        .post(format!("{}/api/v1/admin/credentials", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .json(&IssueCredentialsRequest { count: 3 })
+        .send()
+        .await
+        .unwrap();
+    let issue_resp: IssueCredentialsResponse = res.json().await.unwrap();
+
+    client
+        .post(format!("{}/api/v1/admin/open-voting", ctx.base_url))
+        .header("Authorization", format!("Bearer {}", ctx.admin_token))
+        .send()
+        .await
+        .unwrap();
+
+    for i in 0..3 {
+        let login: VoterLoginResponse = client
+            .post(format!("{}/api/v1/voter/login", ctx.base_url))
+            .json(&VoterLoginRequest { credential_code: issue_resp.credentials[i].clone() })
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        let ballot = sample_ballot(&keypair.pk, (i % 2) as u64, format!("secret_{}", i).as_bytes(), "default_election");
+        client
+            .post(format!("{}/api/v1/ballots", ctx.base_url))
+            .header("Authorization", format!("Bearer {}", login.session_token))
+            .json(&ballot)
+            .send()
+            .await
+            .unwrap();
+    }
+
+    let res = client.get(format!("{}/api/v1/bulletin", ctx.base_url)).send().await.unwrap();
+    let bulletin: BulletinLogResponse = res.json().await.unwrap();
+    assert_eq!(bulletin.entries.len(), 3);
+
+    let mut prev = server::bulletin::GENESIS_HASH.to_string();
+    for entry in &bulletin.entries {
+        assert_eq!(entry.prev_hash, prev);
+        let h = compute_entry_hash(
+            &entry.prev_hash,
+            &entry.nullifier_hex,
+            &entry.ciphertext_c1_hex,
+            &entry.ciphertext_c2_hex,
+            &entry.range_proof,
+        );
+        assert_eq!(entry.entry_hash, h);
+        prev = entry.entry_hash.clone();
+    }
+
+    let mut tampered_entries = bulletin.entries.clone();
+    tampered_entries[1].ciphertext_c1_hex = "tampered_point_data".to_string();
+    let tampered_hash = compute_entry_hash(
+        &tampered_entries[1].prev_hash,
+        &tampered_entries[1].nullifier_hex,
+        &tampered_entries[1].ciphertext_c1_hex,
+        &tampered_entries[1].ciphertext_c2_hex,
+        &tampered_entries[1].range_proof,
+    );
+    assert_ne!(tampered_entries[1].entry_hash, tampered_hash, "Tampered ciphertext must cause entry hash mismatch");
+}

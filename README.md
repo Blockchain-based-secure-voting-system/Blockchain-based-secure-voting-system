@@ -89,20 +89,34 @@ To prevent malicious voters from encrypting out-of-range scalars ($m > 1$ or neg
 
 ## 🔒 Trust Model & Security Considerations
 
-This system utilizes a centralized backend (Axum + PostgreSQL) with client-side zero-knowledge cryptography:
-1. **Centralized Operator Authority**:
-   - The server administrator controls voter eligibility and single-use credential code issuance, ballot inclusion on the bulletin board, election lifecycle phase transitions (Setup -> Voting -> Tallying -> Complete), and server infrastructure availability.
-   - The centralized operator has the technical capability to censor ballots or refuse connections, but **cannot decrypt individual voter ballots or forge election outcomes** without breaking discrete logarithm hardness on BN254.
-2. **End-to-End Ballot Privacy**:
-   - Ballots are encrypted entirely client-side inside the browser WebAssembly module using BN254 Exponential ElGamal. Plaintext votes ( \in \{0, 1\}$) never traverse the network.
-3. **Public Verifiability**:
-   - Every cast ballot includes a non-interactive 1-out-of-2 Disjunctive Chaum-Pedersen zero-knowledge range proof that the encrypted vote is valid (0 or 1) without revealing the vote.
-   - The bulletin board hash-chain (prev_hash integrity checks) and homomorphic tally summation are verifiable by any public auditor.
-   - Final decryption proofs (Chaum-Pedersen DLEQ) are mathematically verified against trustee public keys.
-4. **Threshold Custody**:
-   - When configured with n-of-m Shamir Secret Sharing, no single trustee can decrypt the tally unilaterally. Decryption requires n independent trustee partial decryption factors.
-5. **Audit Status**:
+This system operates on a centralized Axum + PostgreSQL backend paired with client-side WebAssembly zero-knowledge cryptography:
+1. **Operator Authority & Manipulation Capabilities**:
+   - **Credential Issuance & Ballot Stuffing**: The centralized server operator controls voter eligibility and credential code generation. Because the operator generates credential codes, **the operator can issue extra credentials to stuff ballots**.
+   - **Ballot Dropping & Censorship**: The operator controls the bulletin board ingestion endpoint and **can drop or refuse ballots**. Dropping cast ballots is **partially detectable via the hash-chain** if individual voters retain their signed sequence receipts and compare them against the public bulletin board.
+   - **Phase Transitions & Availability**: The operator unilaterally triggers election lifecycle phase transitions (`Setup` -> `Voting` -> `Tallying` -> `Complete`) and controls server uptime/connectivity.
+2. **Individual Ballot Privacy & Trustee Custody**:
+   - Plaintext votes never traverse the network. Ballots are encrypted client-side in browser WebAssembly using BN254 Exponential ElGamal.
+   - **Individual ballot privacy depends entirely on who holds the trustee private key**.
+     - If a single entity holds the trustee private key ($sk$), that entity (or an operator in collusion with them) can decrypt individual voter ciphertexts.
+     - Under $n$-of-$m$ Shamir threshold key custody, at least $n$ threshold trustees must collude to decrypt any individual ballot or the tally.
+3. **Public Mathematical Verifiability**:
+   - Every cast ballot includes a non-interactive 1-out-of-2 Disjunctive Chaum-Pedersen zero-knowledge range proof that the encrypted scalar is strictly 0 or 1 without revealing the vote.
+   - The bulletin board hash-chain (`prev_hash` integrity links) and homomorphic tally summation are independently auditable by public observers using the CLI (`cargo run -p cli -- verify`).
+   - The final tally decryption factor is accompanied by a Chaum-Pedersen DLEQ zero-knowledge proof verified against the trustee public key.
+4. **Audit Status**:
    - This codebase is an unaudited reference implementation and must not be used for binding public elections without an independent security and cryptographic audit.
+
+---
+
+## ⏳ Render Free-Tier Limitations & 30-Day Database Expiry
+
+- **Cold Starts ("Server is waking up")**: On Render's free tier, backend web services spin down after 15 minutes of inactivity. The first incoming request initiates a container cold start taking ~30-60 seconds. The web interface displays a **"Server is waking up"** indicator during this interval.
+- **30-Day PostgreSQL Expiry**: Free-tier PostgreSQL databases on Render automatically expire and are deleted 30 days after creation.
+- **Data Export Tool**: Before database expiration, administrators must archive election artifacts using the export script:
+  ```bash
+  ./scripts/export_election_data.sh https://voting-system-api-wi7q.onrender.com ./exports
+  ```
+  This produces a portable JSON snapshot (`election_export_<timestamp>.json`) containing the election metadata, full bulletin log with hash chain, and encrypted tally.
 
 ---
 

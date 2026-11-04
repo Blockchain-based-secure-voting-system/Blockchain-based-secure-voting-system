@@ -148,7 +148,7 @@ export const WalkthroughModal: React.FC<WalkthroughModalProps> = ({
             >
               <div>
                 <strong style={{ color: 'var(--cobalt-accent-text)', display: 'block', marginBottom: '0.35rem' }}>
-                  What Leaves Your Device (Sent to Canister):
+                  What Leaves Your Device (Sent to Server):
                 </strong>
                 <ul style={{ paddingLeft: '1.1rem', margin: 0 }}>
                   {currentStep.devicePrivacyNote.leavesDevice.map((item, i) => (

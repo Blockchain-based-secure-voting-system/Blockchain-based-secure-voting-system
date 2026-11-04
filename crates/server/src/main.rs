@@ -16,8 +16,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let database_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@127.0.0.1:5432/voting_db".to_string());
-    let admin_token = env::var("ADMIN_TOKEN")
-        .unwrap_or_else(|_| "dev_admin_secret_token_123".to_string());
+    let admin_token = match env::var("ADMIN_TOKEN") {
+        Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
+        _ => {
+            eprintln!("FATAL: ADMIN_TOKEN environment variable is not configured or empty. Server refuses to start.");
+            std::process::exit(1);
+        }
+    };
     let port: u16 = env::var("PORT")
         .unwrap_or_else(|_| "8080".to_string())
         .parse()

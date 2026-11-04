@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { UseCanisterReturn } from '../hooks/useCanister';
+import type { UseElectionReturn } from '../hooks/useElection';
 import { TRUSTEE_SHARE_GUIDE, type RoutePath, type WalkthroughRole } from '../content/copy';
 import { generateThresholdKeys, combineKeyShares, decryptAndProveTally } from '../crypto';
 import { PhaseBadge, getPhaseName } from '../components/PhaseBadge';
@@ -9,11 +9,11 @@ import { mapToSafeErrorMessage } from '../utils/errorMapper';
 import { Key, CheckCircle2, AlertTriangle, Cpu, ShieldAlert, Trash2 } from 'lucide-react';
 
 export const TrusteeView: React.FC<{
-  canister: UseCanisterReturn;
+  election: UseElectionReturn;
   onNavigate?: (path: RoutePath) => void;
   onOpenWalkthrough?: (role: WalkthroughRole) => void;
-}> = ({ canister, onNavigate, onOpenWalkthrough }) => {
-  const { electionDetails, encryptedTally, submitDecryptionProof } = canister;
+}> = ({ election, onNavigate, onOpenWalkthrough }) => {
+  const { electionDetails, encryptedTally, submitDecryptionProof } = election;
 
   // Keygen state
   const [thresholdN, setThresholdN] = useState<number>(3);
@@ -116,7 +116,7 @@ export const TrusteeView: React.FC<{
 
       setDecryptionResult(result);
 
-      // 3. Submit proof to Canister
+      // 3. Submit proof to Server
       const verifiedTally = await submitDecryptionProof({
         a_hex: result.hex_proof.a_hex,
         b_hex: result.hex_proof.b_hex,

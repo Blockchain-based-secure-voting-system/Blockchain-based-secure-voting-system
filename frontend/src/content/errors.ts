@@ -1,14 +1,14 @@
 import type { ElectionPhase } from '../types/election';
 
 /**
- * Single source of truth mapping every canister ElectionPhase variant and
- * every exact canister error string (from canister/src/lib.rs) to clear,
+ * Single source of truth mapping every election ElectionPhase variant and
+ * every exact backend error string (from crates/server/src/handlers.rs) to clear,
  * plain-language user-facing explanations.
  */
-export type CanisterPhaseKey = 'Setup' | 'Voting' | 'Tallying' | 'Complete';
+export type ServerPhaseKey = 'Setup' | 'Voting' | 'Tallying' | 'Complete';
 
 export interface PhaseDescription {
-  key: CanisterPhaseKey;
+  key: ServerPhaseKey;
   badgeLabel: string;
   plainTitle: string;
   whatYouCanDoNow: string;
@@ -17,7 +17,7 @@ export interface PhaseDescription {
   whyTrusteeDisabled?: string;
 }
 
-export const PHASE_VOCABULARY: Record<CanisterPhaseKey, PhaseDescription> = {
+export const PHASE_VOCABULARY: Record<ServerPhaseKey, PhaseDescription> = {
   Setup: {
     key: 'Setup',
     badgeLabel: 'Phase 1: Setup',
@@ -54,7 +54,7 @@ export const PHASE_VOCABULARY: Record<CanisterPhaseKey, PhaseDescription> = {
   },
 };
 
-export function resolvePhaseKey(phase?: ElectionPhase | null): CanisterPhaseKey | null {
+export function resolvePhaseKey(phase?: ElectionPhase | null): ServerPhaseKey | null {
   if (!phase) return null;
   if ('Setup' in phase) return 'Setup';
   if ('Voting' in phase) return 'Voting';
@@ -64,11 +64,11 @@ export function resolvePhaseKey(phase?: ElectionPhase | null): CanisterPhaseKey 
 }
 
 /**
- * Exhaustive map of every literal error string or prefix returned by canister/src/lib.rs.
+ * Exhaustive map of every literal error string or prefix returned by crates/server/src/handlers.rs.
  * Tested in tests/backend_alignment.test.ts against the actual Rust source file.
  */
-export const CANISTER_ERROR_MAP: Record<string, string> = {
-  'Only the canister admin can initialize an election':
+export const SERVER_ERROR_MAP: Record<string, string> = {
+  'Only the admin can initialize an election':
     'Authorization denied: Only the election administrator can create or reset an election.',
   'Invalid trustee public key hex:':
     'The Trustee Master Public Key is not a valid compressed BN254 G1 point in hexadecimal format. Generate a setup in the Trustee portal first.',
@@ -92,7 +92,7 @@ export const CANISTER_ERROR_MAP: Record<string, string> = {
     'Ballot rejected: The cryptographic nullifier hash is malformed (expected 32 bytes).',
   'Double-vote detected: nullifier has already been submitted':
     'Double-vote prevented: A ballot with this nullifier has already been recorded. Each registered voter may only cast one ballot per election.',
-  'Corrupt trustee PK in canister state:':
+  'Corrupt trustee PK in server state:':
     'Server configuration error: The stored Trustee Master Public Key could not be decoded.',
   'Invalid ciphertext points on BN254 G1:':
     'Ballot rejected: The encrypted ballot points (C1, C2) are not valid points on the BN254 G1 elliptic curve.',
@@ -102,7 +102,7 @@ export const CANISTER_ERROR_MAP: Record<string, string> = {
     'Cryptographic range proof verification failed: The ballot could not be verified as encoding a valid 0 (NO) or 1 (YES) choice.',
   'Election is not currently in Voting phase':
     'Voting cannot be closed because the election is not currently in the Voting phase.',
-  'Canister is not in Tallying phase':
+  'Server is not in Tallying phase':
     'Decryption proof rejected: The election must be in the Tallying phase before a tally proof can be submitted.',
   'Invalid proof deserialization:':
     'Decryption proof rejected: The Chaum-Pedersen proof fields could not be decoded.',
@@ -111,11 +111,11 @@ export const CANISTER_ERROR_MAP: Record<string, string> = {
 };
 
 /**
- * Formats a canister nanosecond timestamp (or Unix second timestamp if < 1e12) into:
+ * Formats a election timestamp (seconds or nanoseconds) (or Unix second timestamp if < 1e12) into:
  * - localFormatted: human-readable date/time in the user's local timezone
  * - utcFormatted: ISO / UTC string for hover/focus inspection
  */
-export function formatCanisterTime(timestampNsOrSec: bigint): {
+export function formatElectionTime(timestampNsOrSec: bigint): {
   isSet: boolean;
   localFormatted: string;
   utcFormatted: string;
@@ -129,7 +129,7 @@ export function formatCanisterTime(timestampNsOrSec: bigint): {
       epochMs: 0,
     };
   }
-  // ICP ic_cdk::api::time() is in nanoseconds (~1.7e18). If a user entered Unix seconds (< 1e12), normalize to ms.
+  // If timestamp is in nanoseconds (> 1e12), normalize to milliseconds.
   const epochMs =
     timestampNsOrSec > 1_000_000_000_000_000n
       ? Number(timestampNsOrSec / 1_000_000n)
@@ -155,6 +155,7 @@ export function formatCanisterTime(timestampNsOrSec: bigint): {
 /**
  * Detects when the voting deadline has passed by wall-clock time while the election phase is still Voting.
  */
+
 export function isVotingDeadlineExpiredButPhaseOpen(
   phase?: ElectionPhase | null,
   endTimeNsOrSec?: bigint,
@@ -164,6 +165,6 @@ export function isVotingDeadlineExpiredButPhaseOpen(
   if (key !== 'Voting' || !endTimeNsOrSec || endTimeNsOrSec <= 0n) {
     return false;
   }
-  const { epochMs } = formatCanisterTime(endTimeNsOrSec);
+  const { epochMs } = formatElectionTime(endTimeNsOrSec);
   return epochMs > 0 && nowMs > epochMs;
 }

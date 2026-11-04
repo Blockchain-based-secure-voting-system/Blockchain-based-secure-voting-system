@@ -1,21 +1,21 @@
 import React from 'react';
-import type { UseCanisterReturn } from '../hooks/useCanister';
+import type { UseElectionReturn } from '../hooks/useElection';
 import type { RoutePath, WalkthroughRole } from '../content/copy';
 import { GlossaryTerm, OrientationBanner } from '../components/OrientationBanner';
 import { PHASE_VOCABULARY, resolvePhaseKey } from '../content/errors';
 
 interface HomeViewProps {
-  canister: UseCanisterReturn;
+  election: UseElectionReturn;
   onNavigate: (path: RoutePath) => void;
   onOpenWalkthrough: (role: WalkthroughRole) => void;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
-  canister,
+  election,
   onNavigate,
   onOpenWalkthrough,
 }) => {
-  const { electionDetails } = canister;
+  const { electionDetails } = election;
   const phaseKey = resolvePhaseKey(electionDetails?.phase);
   const phaseInfo = phaseKey ? PHASE_VOCABULARY[phaseKey] : null;
 
@@ -104,7 +104,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
             <h3>Cast an Encrypted Ballot</h3>
             <p className="text-secondary mt-2 mb-4" style={{ fontSize: '0.9rem' }}>
-              Sign in with Internet Identity, confirm your Principal ID is on the registered voter roll, and encrypt your
+              Enter your single-use voter credential code, confirm your eligibility, and encrypt your
               YES (1) or NO (0) choice inside your browser. Receive a 32-byte nullifier receipt to check your ballot was
               counted.
             </p>
@@ -130,7 +130,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <h3>Verify Tally &amp; Audit Receipts</h3>
             <p className="text-secondary mt-2 mb-4" style={{ fontSize: '0.9rem' }}>
               Anyone can inspect the live ballot count, check whether a voter nullifier receipt was recorded on-chain,
-              and run copyable <code>dfx canister call</code> commands to verify the tally without trusting this web UI.
+              and run copyable CLI audit commands (<code>cargo run -p cli -- verify</code>) to verify the tally independently.
             </p>
           </div>
           <div className="flex gap-2" style={{ flexWrap: 'wrap' }}>
@@ -200,8 +200,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         <div className="mt-4 text-secondary" style={{ fontSize: '0.88rem', lineHeight: 1.6 }}>
           <p className="mb-2">
             <strong>Curve &amp; Group:</strong> Barreto-Naehrig BN254 (alt_bn128) G1 prime-order subgroup and scalar
-            field Fr, compiled from Rust (<code>crates/voting_crypto</code>) to both the ICP canister
-            (<code>wasm32-unknown-unknown</code>) and browser WebAssembly (<code>crates/voting_crypto_wasm</code>).
+            field Fr, compiled from Rust (<code>crates/voting_crypto</code>) to both the backend verification engine and browser WebAssembly (<code>crates/voting_crypto_wasm</code>).
           </p>
           <p className="mb-2">
             <strong>Ballot Proof:</strong> 1-out-of-2 disjunctive Chaum-Pedersen sigma protocol proving{' '}

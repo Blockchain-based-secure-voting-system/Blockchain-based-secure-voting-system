@@ -47,7 +47,7 @@ fn extract_bearer_token(headers: &HeaderMap) -> Result<&str, AppError> {
 fn require_admin_auth(headers: &HeaderMap, expected_token: &str) -> Result<(), AppError> {
     let token = extract_bearer_token(headers)?;
     if !verify_admin_token(token, expected_token) {
-        return Err(AppError::Forbidden("Invalid administrative authorization token".to_string()));
+        return Err(AppError::Unauthorized("Invalid administrative authorization token".to_string()));
     }
     Ok(())
 }

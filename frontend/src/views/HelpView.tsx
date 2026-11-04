@@ -1,30 +1,30 @@
 import React from 'react';
-import type { UseCanisterReturn } from '../hooks/useCanister';
+import type { UseElectionReturn } from '../hooks/useElection';
 import type { RoutePath, WalkthroughRole } from '../content/copy';
 import { GlossaryTerm, OrientationBanner } from '../components/OrientationBanner';
 
 interface HelpViewProps {
-  canister: UseCanisterReturn;
+  election: UseElectionReturn;
   onNavigate: (path: RoutePath) => void;
   onOpenWalkthrough: (role: WalkthroughRole) => void;
 }
 
 export const HelpView: React.FC<HelpViewProps> = ({
-  canister,
+  election,
   onNavigate,
   onOpenWalkthrough,
 }) => {
   return (
     <div>
       <OrientationBanner
-        electionDetails={canister.electionDetails}
+        electionDetails={election.electionDetails}
         walkthroughRole="voter"
         onOpenWalkthrough={onOpenWalkthrough}
         onNavigate={onNavigate}
         orientation={{
           whereAmI: 'Accessibility and Help (/help) — Keyboard navigation, resilience recovery guide, accessibility statement, and manual usability checklist.',
           whatCanIDoNow:
-            'Review keyboard shortcuts, troubleshoot replica or Internet Identity errors, or run through the role-by-role usability evaluation script.',
+            'Review keyboard shortcuts, troubleshoot server connection or credential errors, or run through the role-by-role usability evaluation script.',
           whatHappensNext:
             'Use the navigation links or keyboard Tab key to jump directly to /vote, /verify, /admin, or /trustee.',
           whatIfSomethingGoesWrong:
@@ -128,21 +128,20 @@ export const HelpView: React.FC<HelpViewProps> = ({
             </p>
           </div>
           <div style={{ padding: '0.9rem', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-            <strong>2. Wrong Network or Canister Not Deployed</strong>
+            <strong>2. Backend Unreachable or Server Waking Up</strong>
             <p className="text-secondary mt-2" style={{ margin: '0.3rem 0 0 0' }}>
-              Shown when the replica is running but the canister ID does not exist. Run <code>dfx deploy canister</code>{' '}
-              and reload.
+              Shown when the Axum server is waking up from free-tier sleep on Render (~30-60s) or the network is temporarily offline. and reload.
             </p>
           </div>
           <div style={{ padding: '0.9rem', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-            <strong>3. Expired Internet Identity Session</strong>
+            <strong>3. Expired Voter Session</strong>
             <p className="text-secondary mt-2" style={{ margin: '0.3rem 0 0 0' }}>
               Delegations expire after 8 hours. If your session expires mid-flow, click{' '}
               <strong>Re-Authenticate Now</strong> in the session banner.
             </p>
           </div>
           <div style={{ padding: '0.9rem', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-            <strong>4. Slow Network / Canister Verification Delay</strong>
+            <strong>4. Slow Network / Server Verification Delay</strong>
             <p className="text-secondary mt-2" style={{ margin: '0.3rem 0 0 0' }}>
               On-chain pairing and elliptic-curve verification take 1–3 seconds. If a request exceeds 3 seconds, a Slow
               Network notice appears with a manual Retry button.
@@ -168,7 +167,7 @@ export const HelpView: React.FC<HelpViewProps> = ({
           </li>
           <li>
             <strong>Observer Task (/verify):</strong> Ask a participant to verify the saved nullifier receipt in the UI
-            and execute the copyable <code>dfx canister call canister has_nullifier_been_used</code> command in a
+            and execute the copyable <code>cargo run -p cli -- verify</code> command in a
             terminal.
           </li>
           <li>

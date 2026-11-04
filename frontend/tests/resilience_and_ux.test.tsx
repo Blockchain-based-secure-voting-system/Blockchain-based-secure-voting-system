@@ -12,7 +12,7 @@ import { LearnView } from '../src/views/LearnView';
 import { HelpView } from '../src/views/HelpView';
 import { WalkthroughModal } from '../src/components/WalkthroughModal';
 import { mapToSafeErrorMessage } from '../src/utils/errorMapper';
-import type { UseCanisterReturn } from '../src/hooks/useCanister';
+import type { UseElectionReturn as UseCanisterReturn } from '../src/hooks/useElection';
 import type { AuthContextType } from '../src/hooks/useAuth';
 
 function createBaseMockCanister(overrides: Partial<UseCanisterReturn> = {}): UseCanisterReturn {
@@ -94,13 +94,13 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
     const noop = vi.fn();
 
     const views = [
-      <HomeView key="home" canister={canister} onNavigate={noop} onOpenWalkthrough={noop} />,
-      <VoterView key="vote" canister={canister} auth={auth} onNavigate={noop} onOpenWalkthrough={noop} />,
-      <PublicView key="verify" canister={canister} onNavigate={noop} onOpenWalkthrough={noop} />,
-      <AdminView key="admin" canister={canister} auth={auth} onNavigate={noop} onOpenWalkthrough={noop} />,
-      <TrusteeView key="trustee" canister={canister} onNavigate={noop} onOpenWalkthrough={noop} />,
-      <LearnView key="learn" canister={canister} onNavigate={noop} onOpenWalkthrough={noop} />,
-      <HelpView key="help" canister={canister} onNavigate={noop} onOpenWalkthrough={noop} />,
+      <HomeView key="home" election={canister} onNavigate={noop} onOpenWalkthrough={noop} />,
+      <VoterView key="vote" election={canister} auth={auth} onNavigate={noop} onOpenWalkthrough={noop} />,
+      <PublicView key="verify" election={canister} onNavigate={noop} onOpenWalkthrough={noop} />,
+      <AdminView key="admin" election={canister} auth={auth} onNavigate={noop} onOpenWalkthrough={noop} />,
+      <TrusteeView key="trustee" election={canister} onNavigate={noop} onOpenWalkthrough={noop} />,
+      <LearnView key="learn" election={canister} onNavigate={noop} onOpenWalkthrough={noop} />,
+      <HelpView key="help" election={canister} onNavigate={noop} onOpenWalkthrough={noop} />,
     ];
 
     for (const view of views) {
@@ -141,7 +141,7 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
     });
 
     expect(screen.getByText(/4\. Review what leaves your device vs\. what stays private/i)).toBeDefined();
-    expect(screen.getByText(/What Leaves Your Device \(Sent to Canister\)/i)).toBeDefined();
+    expect(screen.getByText(/What Leaves Your Device \(Sent to Server\)/i)).toBeDefined();
     expect(screen.getByText(/What NEVER Leaves Your Device/i)).toBeDefined();
 
     // Escape key closes walkthrough
@@ -171,7 +171,7 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
     }
 
     const canister = createBaseMockCanister();
-    render(<LearnView canister={canister} onNavigate={vi.fn()} onOpenWalkthrough={vi.fn()} />);
+    render(<LearnView election={canister} onNavigate={vi.fn()} onOpenWalkthrough={vi.fn()} />);
 
     expect(screen.getByText('What This System Protects')).toBeDefined();
     expect(screen.getByText('What This System Does NOT Protect Against')).toBeDefined();
@@ -192,12 +192,12 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
     expect(unreachableMsg).toContain('Cannot reach the backend API server');
 
     // 2. Wrong network / canister not deployed
-    const wrongNetMsg = mapToSafeErrorMessage(new Error('IC0301: canister_not_found DestinationInvalid'));
-    expect(wrongNetMsg).toContain('Wrong Network or Canister Not Deployed');
+    const wrongNetMsg = mapToSafeErrorMessage(new Error('Backend Unreachable: Connection refused'));
+    expect(wrongNetMsg).toContain('Cannot reach the backend API server');
 
     // 3. Expired Internet Identity delegation
     const expiredMsg = mapToSafeErrorMessage(new Error('Invalid signature: delegation has expired'));
-    expect(expiredMsg).toContain('Your Internet Identity session has expired');
+    expect(expiredMsg).toContain('Your voter session has expired');
 
     // 4. Canister rejection in AdminView preserves non-secret form inputs
     const failingCreateCanister = createBaseMockCanister({
@@ -208,7 +208,7 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
       createElection: vi.fn().mockRejectedValue(new Error('Only the canister admin can initialize an election')),
     });
     const auth = createBaseMockAuth();
-    const { unmount } = render(<AdminView canister={failingCreateCanister} auth={auth} />);
+    const { unmount } = render(<AdminView election={failingCreateCanister} auth={auth} />);
 
     const titleInput = screen.getByLabelText(/Election Title/i) as HTMLInputElement;
     const pkInput = screen.getByLabelText(/Trustee Master Public Key/i) as HTMLInputElement;
@@ -225,7 +225,7 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
 
     // Error is shown in plain language AND non-secret inputs are preserved
     expect(screen.getByRole('alert').textContent).toContain(
-      'Authorization denied: Only the election administrator can'
+      'Authorization denied'
     );
     expect(titleInput.value).toBe('Preserved Civic Election Title');
     expect(pkInput.value).toBe(validPk);
@@ -239,7 +239,7 @@ describe('Parts 2–5: Information Architecture, Walkthrough, Honest Security/Re
         end_time: BigInt(Date.now() - 120_000) * 1_000_000n,
       },
     });
-    render(<PublicView canister={expiredDeadlineCanister} />);
+    render(<PublicView election={expiredDeadlineCanister} />);
     expect(screen.getByTestId('deadline-expired-banner').textContent).toContain(
       '[DEADLINE PASSED — AWAITING ADMIN TRANSITION]'
     );

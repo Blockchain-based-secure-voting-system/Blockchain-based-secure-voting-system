@@ -1,7 +1,7 @@
-import { CANISTER_ERROR_MAP } from '../content/errors';
+import { SERVER_ERROR_MAP } from '../content/errors';
 
 /**
- * Detects whether a canister/replica error indicates that the temporary ICP Playground
+ * Detects whether a backend server error indicates that the server cold-start
  * demo backend has expired (20-minute TTL) or its WebAssembly module is not installed.
  */
 export function isDemoBackendExpiredError(err: unknown): boolean {
@@ -12,13 +12,13 @@ export function isDemoBackendExpiredError(err: unknown): boolean {
       ? err.message
       : String(err);
 
-  return /canister_not_found|DestinationInvalid|IC0301|IC0537|has no wasm module|code_uninstall|Canister .* not found|Wrong Network or Canister Not Deployed/i.test(
+  return /Backend Unreachable|Failed to fetch|NetworkError|Connection refused/i.test(
     raw
   );
 }
 
 /**
- * Maps raw canister, network, or WebAssembly errors to safe, user-facing messages.
+ * Maps raw server, network, or WebAssembly errors to safe, user-facing messages.
  * Strips stack traces, raw hex dumps of secrets, and internal state details.
  */
 export function mapToSafeErrorMessage(err: unknown, fallbackContext: string = 'Operation failed'): string {
@@ -36,11 +36,11 @@ export function mapToSafeErrorMessage(err: unknown, fallbackContext: string = 'O
   const firstLine = raw.split('\n')[0].trim();
   const sanitized = firstLine.replace(/(?:0x)?[0-9a-fA-F]{24,}/g, '[REDACTED_HEX]');
 
-  // 1. Check canonical canister error vocabulary map (exact match or prefix match)
-  if (CANISTER_ERROR_MAP[firstLine]) {
-    return CANISTER_ERROR_MAP[firstLine];
+  // 1. Check canonical server error vocabulary map (exact match or prefix match)
+  if (SERVER_ERROR_MAP[firstLine]) {
+    return SERVER_ERROR_MAP[firstLine];
   }
-  for (const [key, mappedMessage] of Object.entries(CANISTER_ERROR_MAP)) {
+  for (const [key, mappedMessage] of Object.entries(SERVER_ERROR_MAP)) {
     if (firstLine.includes(key)) {
       return mappedMessage;
     }
@@ -50,11 +50,11 @@ export function mapToSafeErrorMessage(err: unknown, fallbackContext: string = 'O
   if (/fetch|network|ECONNREFUSED|ERR_CONNECTION_REFUSED|Failed to fetch|unreachable/i.test(firstLine)) {
     return 'Cannot reach the backend API server. Verify the server is running and retry.';
   }
-  if (/Wrong Network|Canister Not Deployed|canister_not_found|DestinationInvalid|IC0301|IC0537|has no wasm module|code_uninstall|Canister .* not found/i.test(firstLine)) {
-    return 'Wrong Network or Canister Not Deployed: The configured Canister ID was not found or the temporary ICP Playground backend (20-minute TTL) has expired. Run ./scripts/deploy_demo.sh or dfx deploy canister to redeploy.';
+  if (/Backend Unreachable|Failed to fetch|NetworkError|Connection refused/i.test(firstLine)) {
+    return 'Backend Unreachable: The centralized server is unreachable or waking up from sleep. Please wait a moment and retry.';
   }
   if (/delegation.*expired|session.*expired|Invalid signature.*expiry/i.test(firstLine)) {
-    return 'Your Internet Identity session has expired. Please sign in again to continue.';
+    return 'Your voter session has expired. Please log in with your credential code again.';
   }
   if (/Double-vote detected|nullifier.*already/i.test(firstLine)) {
     return 'Double-vote prevented: A ballot with this nullifier has already been recorded on-chain.';

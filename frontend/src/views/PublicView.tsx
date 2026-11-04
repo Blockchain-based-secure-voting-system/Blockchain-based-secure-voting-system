@@ -1,19 +1,23 @@
 import React, { useState } from 'react';
 import { PhaseBadge } from '../components/PhaseBadge';
-import type { UseCanisterReturn } from '../hooks/useCanister';
+import type { UseElectionReturn } from '../hooks/useElection';
 import type { RoutePath, WalkthroughRole } from '../content/copy';
 import { GlossaryTerm, OrientationBanner, DeadlineDisplay } from '../components/OrientationBanner';
 import { validateHexString } from '../utils/validation';
 import { CheckCircle, ShieldAlert, BarChart3, RefreshCw, Layers, AlertTriangle, Search, Terminal } from 'lucide-react';
 
 interface PublicViewProps {
-  canister: UseCanisterReturn;
+  election: UseElectionReturn;
   onNavigate?: (path: RoutePath) => void;
   onOpenWalkthrough?: (role: WalkthroughRole) => void;
 }
 
-export const PublicView: React.FC<PublicViewProps> = ({ canister, onNavigate, onOpenWalkthrough }) => {
-  const { electionDetails, encryptedTally, loading, error, refreshState, hasNullifierBeenUsed } = canister;
+export const PublicView: React.FC<PublicViewProps> = ({
+  election,
+  onNavigate,
+  onOpenWalkthrough,
+}) => {
+  const { electionDetails, encryptedTally, loading, error, refreshState, hasNullifierBeenUsed } = election;
 
   const [nullifierQueryHex, setNullifierQueryHex] = useState('');
   const [nullifierCheckResult, setNullifierCheckResult] = useState<{

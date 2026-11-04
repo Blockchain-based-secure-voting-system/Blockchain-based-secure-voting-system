@@ -38,7 +38,7 @@ enum Commands {
 
     /// Combine n threshold key shares to reconstruct master secret key
     CombineThresholdShares {
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long)]
         shares: Vec<String>,
     },
 
@@ -128,7 +128,7 @@ enum Commands {
         #[arg(long)]
         admin_token: String,
 
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long)]
         shares: Vec<String>,
 
         #[arg(long, default_value = "1000000")]

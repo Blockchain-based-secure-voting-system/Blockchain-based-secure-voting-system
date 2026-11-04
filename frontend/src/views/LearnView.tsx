@@ -1,5 +1,5 @@
 import React from 'react';
-import type { UseCanisterReturn } from '../hooks/useCanister';
+import type { UseElectionReturn } from '../hooks/useElection';
 import {
   GLOSSARY,
   REGULATORY_CITATIONS,
@@ -12,20 +12,20 @@ import {
 import { GlossaryTerm, OrientationBanner } from '../components/OrientationBanner';
 
 interface LearnViewProps {
-  canister: UseCanisterReturn;
+  election: UseElectionReturn;
   onNavigate: (path: RoutePath) => void;
   onOpenWalkthrough: (role: WalkthroughRole) => void;
 }
 
 export const LearnView: React.FC<LearnViewProps> = ({
-  canister,
+  election,
   onNavigate,
   onOpenWalkthrough,
 }) => {
   return (
     <div>
       <OrientationBanner
-        electionDetails={canister.electionDetails}
+        electionDetails={election.electionDetails}
         walkthroughRole="voter"
         onOpenWalkthrough={onOpenWalkthrough}
         onNavigate={onNavigate}

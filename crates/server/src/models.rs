@@ -121,7 +121,7 @@ pub struct BallotReceiptResponse {
     pub message: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BulletinEntry {
     pub sequence_number: i64,
     pub prev_hash: String,

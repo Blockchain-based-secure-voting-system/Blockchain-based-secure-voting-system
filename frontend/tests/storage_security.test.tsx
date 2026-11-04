@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TrusteeView } from '../src/views/TrusteeView';
-import type { UseCanisterReturn } from '../src/hooks/useCanister';
+import type { UseElectionReturn as UseCanisterReturn } from '../src/hooks/useElection';
 import { Principal } from '../src/types/principal';
 
 // Mock external crypto & canister calls only
@@ -80,7 +80,7 @@ describe('TrusteeView Real Component Storage Security Invariant', () => {
     };
 
     // 1. Render the real TrusteeView component
-    render(<TrusteeView canister={mockCanister} />);
+    render(<TrusteeView election={mockCanister} />);
 
     // 2. Find the real share input textarea
     const textarea = screen.getByPlaceholderText(/1:0x1234/);

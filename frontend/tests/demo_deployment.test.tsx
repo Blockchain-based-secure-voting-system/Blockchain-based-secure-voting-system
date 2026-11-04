@@ -4,11 +4,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   shouldFetchRootKey,
-  resolveConfiguredCanisterId,
   resolveConfiguredIcHost,
-  useCanister,
+  useElection,
   isLocalReplicaUrl,
-} from '../src/hooks/useCanister';
+} from '../src/hooks/useElection';
 import { isDemoBackendExpiredError } from '../src/utils/errorMapper';
 import { App } from '../src/App';
 
@@ -33,7 +32,7 @@ class MockAuthClient {
 }
 
 function TestUseCanisterHarness() {
-  const canister = useCanister(null);
+  const canister = useElection(null);
   return (
     <div>
       <span data-testid="harness-expired">{String(Boolean(canister.isDemoExpired))}</span>
@@ -78,7 +77,7 @@ describe('Part 2 & Part 3: Demo Deployment Security, RootKey Guard, Expired Play
     expect(shouldFetchRootKey('http://localhost:4943')).toBe(true);
     expect(shouldFetchRootKey('http://[::1]:4943')).toBe(true);
 
-    // Spy on HttpAgent.prototype.fetchRootKey and verify createActor + useCanister never call it when VITE_IC_HOST is https://icp-api.io
+    // Spy on HttpAgent.prototype.fetchRootKey and verify createActor + useElection never call it when VITE_IC_HOST is https://icp-api.io
     process.env.VITE_IC_HOST = 'https://icp-api.io';
     const fetchRootKeySpy = vi.spyOn(MockHttpAgent.prototype, 'fetchRootKey').mockResolvedValue(new ArrayBuffer(0));
     expect(shouldFetchRootKey('https://icp-api.io')).toBe(false);
@@ -94,29 +93,27 @@ describe('Part 2 & Part 3: Demo Deployment Security, RootKey Guard, Expired Play
     process.env.VITE_CANISTER_ID = '6cajv-qqaaa-aaaab-qactq-cai';
     process.env.VITE_IC_HOST = 'https://icp-api.io';
 
-    expect(resolveConfiguredCanisterId()).toBe('6cajv-qqaaa-aaaab-qactq-cai');
-    expect(resolveConfiguredCanisterId()).not.toBe('malicious-phishing-canister-cai');
     expect(resolveConfiguredIcHost()).toBe('https://icp-api.io');
     expect(resolveConfiguredIcHost()).not.toContain('evil.example.com');
 
-    // Also verify source code of useCanister.ts does not read canister_id from URLSearchParams
-    const useCanisterSource = fs.readFileSync(
-      path.resolve(__dirname, '../src/hooks/useCanister.ts'),
+    // Also verify source code of useElection.ts does not read canister_id from URLSearchParams
+    const useElectionSource = fs.readFileSync(
+      path.resolve(__dirname, '../src/hooks/useElection.ts'),
       'utf8'
     );
-    expect(useCanisterSource).not.toContain(".get('canister_id')");
-    expect(useCanisterSource).not.toContain('.get("canister_id")');
+    expect(useElectionSource).not.toContain(".get('canister_id')");
+    expect(useElectionSource).not.toContain('.get("canister_id")');
   });
 
   it('detects ICP Playground 20-minute expiration / uninstalled canister errors and renders the distinct Demo Expired banner in App', async () => {
-    expect(isDemoBackendExpiredError(new Error('IC0301: Canister 6cajv-qqaaa-aaaab-qactq-cai not found'))).toBe(true);
-    expect(isDemoBackendExpiredError(new Error('Reject code: DestinationInvalid (canister_not_found)'))).toBe(true);
-    expect(isDemoBackendExpiredError(new Error('IC0537: Canister has no wasm module installed'))).toBe(true);
+    expect(isDemoBackendExpiredError(new Error('Backend Unreachable: Connection refused'))).toBe(true);
+    expect(isDemoBackendExpiredError(new Error('Failed to fetch (ERR_CONNECTION_REFUSED)'))).toBe(true);
+    expect(isDemoBackendExpiredError(new Error('NetworkError when attempting to fetch resource'))).toBe(true);
     expect(isDemoBackendExpiredError(new Error('Normal validation error'))).toBe(false);
 
     // Simulate backend expired error on global fetch
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(
-      new Error('IC0301: Canister 6cajv-qqaaa-aaaab-qactq-cai not found (canister_not_found)')
+      new Error('Backend Unreachable: Connection refused')
     );
 
     render(<App />);
@@ -177,9 +174,7 @@ describe('Part 2 & Part 3: Demo Deployment Security, RootKey Guard, Expired Play
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("script-src 'self' 'wasm-unsafe-eval'");
     expect(csp).not.toContain("'unsafe-eval'");
-    expect(csp).toContain('https://icp-api.io');
-    expect(csp).toContain('https://icp0.io');
-    expect(csp).toContain('https://identity.ic0.app');
+    expect(csp).toContain('https://voting-system-api-wi7q.onrender.com');
     expect(headerMap.get('X-Frame-Options')).toBe('DENY');
     expect(headerMap.get('X-Content-Type-Options')).toBe('nosniff');
     expect(headerMap.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');

@@ -109,17 +109,17 @@ pub fn audit_bulletin_and_tally(
         );
     }
 
-    // 4. Verify Chaum-Pedersen Decryption Proof if Election Complete
-    let decryption_proof_valid = if election.phase == ElectionPhase::Complete {
-        let proof_hex = decryption_proof
-            .ok_or_else(|| anyhow!("Election is Complete but Chaum-Pedersen decryption proof was not supplied"))?;
-
-        let proof = proof_hex.to_proof()
+    // 4. Verify Chaum-Pedersen Decryption Proof if supplied or recorded
+    let decryption_proof_valid = if let Some(proof_hex) = decryption_proof {
+        let proof = proof_hex
+            .to_proof()
             .map_err(|e| anyhow!("Invalid Chaum-Pedersen decryption proof encoding: {}", e))?;
 
         verify_decryption_proof(&trustee_pk, &computed_sum, &proof)
             .context("Chaum-Pedersen zero-knowledge decryption proof failed verification")?;
 
+        Some(true)
+    } else if election.proof_verified {
         Some(true)
     } else {
         None

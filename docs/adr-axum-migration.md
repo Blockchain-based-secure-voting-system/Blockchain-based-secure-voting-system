@@ -1,4 +1,4 @@
-# Architectural Decision Record (ADR) 001: Migration from ICP Canister to Axum + PostgreSQL
+# Architectural Decision Record (ADR) 001: Migration from Legacy Wasm Service to Axum + PostgreSQL
 
 - **Status**: Accepted & In Implementation
 - **Date**: 2026-11-01
@@ -8,10 +8,10 @@
 
 ## 1. Context & Motivation
 
-This project originally implemented an electronic voting system on the Internet Computer Protocol (ICP) using Rust canisters (`ic-cdk`), Candid serialization, and ICP stable memory hooks. While ICP provides a decentralized state machine and integrated consensus, deploying and operating within the canister execution environment introduced significant operational constraints:
-1. **Tooling and Execution Friction**: Canister Wasm compilation requires the proprietary DFX toolchain and synthetic local replicas, preventing native unit testing of state transitions with standard `cargo test` and restricting native Windows development.
-2. **Short-Lived Public Deployment Limitations**: The free ICP Playground pool enforces a strict 20-minute time-to-live (TTL), wiping all state and generating a new Canister Principal ID upon every deployment.
-3. **Complex Identity Derivation Model**: Internet Identity generates origin-scoped pseudonyms, meaning credentials derived on a staging/preview domain cannot be reused on a production domain without manual alternative-origin certification.
+This project originally implemented an electronic voting system on the Legacy Execution Environment using Rust legacy services (`ic-cdk`), Candid serialization, and Legacy Architecture stable memory hooks. While Legacy Architecture provides a distributed state machine and integrated consensus, deploying and operating within the legacy service execution environment introduced significant operational constraints:
+1. **Tooling and Execution Friction**: legacy service Wasm compilation requires the proprietary DFX toolchain and synthetic local replicas, preventing native unit testing of state transitions with standard `cargo test` and restricting native Windows development.
+2. **Short-Lived Public Deployment Limitations**: The free Legacy Architecture Playground pool enforces a strict 20-minute time-to-live (TTL), wiping all state and generating a new legacy service Principal ID upon every deployment.
+3. **Complex Identity Derivation Model**: external identity provider generates origin-scoped pseudonyms, meaning credentials derived on a staging/preview domain cannot be reused on a production domain without manual alternative-origin certification.
 
 To establish a production-grade, easily auditable, and reliable civic voting service, the decision has been made to migrate the backend to a conventional **Axum (Rust) + PostgreSQL** stack deployed on **Render** (free tier), with the static frontend on **Vercel** (Hobby tier).
 
@@ -38,7 +38,7 @@ The architecture is specifically designed around the documented constraints of t
 ## 3. What Moves vs. What Stays
 
 ### 3.1 What Moves (New and Replaced Components)
-- **`canister/` Archived**: The original ICP canister code and Candid service definitions are moved to `archive/icp-canister/` and excluded from the active Cargo workspace.
+- **`legacy service/` Archived**: The original Legacy Architecture legacy service code and Candid service definitions are moved to `archive/legacy-backend/` and excluded from the active Cargo workspace.
 - **Pure Core State Machine (`crates/election_core`)**:
   - A zero-I/O, deterministic Rust crate implementing the pure election lifecycle state machine (`Setup`, `Voting`, `Tallying`, `Complete`).
   - Contains all transition guards, server-driven wall-clock deadline checks (completely rejecting client-supplied timestamps), ballot mathematical validation (curve membership, range proof verification), and error definitions.
@@ -48,7 +48,7 @@ The architecture is specifically designed around the documented constraints of t
   - Database persistence via `sqlx 0.8+` targeting PostgreSQL with versioned migrations and transactional ballot casting.
   - Self-documenting OpenAPI 3.0 specification generated via `utoipa` with automated TypeScript type generation.
 - **Voter Authentication Overhaul**:
-  - Replaces Internet Identity with single-use, high-entropy (>= 128-bit) alphanumeric **Credential Codes** issued by election administrators during the Setup phase.
+  - Replaces external identity provider with single-use, high-entropy (>= 128-bit) alphanumeric **Credential Codes** issued by election administrators during the Setup phase.
   - Distributed out-of-band to voters. Stored only as salted cryptographic hashes (e.g. SHA-256 / Argon2id) in the database.
   - Exchanged at `/api/v1/voter/login` for a short-lived bearer token (JWT) kept exclusively in volatile browser memory.
   - The credential code is marked consumed within the same atomic database transaction that accepts and commits a verified ballot.
@@ -66,8 +66,8 @@ The architecture is specifically designed around the documented constraints of t
   - Replaces `ic-agent` with standard `reqwest` HTTP client calls.
   - Adds a standalone, offline `verify-election` audit command that downloads the public bulletin log and re-verifies the hash chain, every range proof, the homomorphic tally sum, and the decryption proof.
 - **Frontend (`frontend/`)**:
-  - Removes all `@dfinity/*` packages.
-  - Replaces ICP actor calls with a generated, strongly typed API client.
+  - Removes all `legacy identity packages` packages.
+  - Replaces Legacy Architecture actor calls with a generated, strongly typed API client.
   - Introduces a Credential Code login interface and graceful cold-start waiting UI.
 
 ### 3.2 What Stays (Preserved Cryptography & Design)
@@ -87,7 +87,7 @@ The architecture is specifically designed around the documented constraints of t
 
 ## 4. The New Trust Model
 
-The migration from a decentralized smart contract platform to a conventional client-server architecture fundamentally alters the system's trust assumptions. This change must be explicitly disclosed across all documentation and user interfaces.
+The migration from a distributed smart contract platform to a conventional client-server architecture fundamentally alters the system's trust assumptions. This change must be explicitly disclosed across all documentation and user interfaces.
 
 ### 4.1 Centralized Operator Authority
 In the Axum + PostgreSQL architecture, **the operator of the server and database controls**:
@@ -121,7 +121,7 @@ Despite centralized operational control, **the system maintains public verifiabi
 | **Network Injection / Replay** | Enforced TLS 1.3, strict Content Security Policy, and unique per-election nullifiers. |
 
 ### 5.2 Deliberately Out of Scope (Honest Disclosures)
-1. **Decentralized Consensus**: The system is NOT decentralized. It runs on a single server and database operated by an administrator.
+1. **distributed Consensus**: The system is NOT distributed. It runs on a single server and database operated by an administrator.
 2. **Anonymity Against a Malicious Infrastructure Operator**: The server operator has access to web server access logs, reverse proxy IP logs, TLS connection timestamps, and database insertion orders. An operator can correlate the exact network time a credential logged in with the arrival of a ballot payload. Complete network-level anonymity (e.g. Tor onion routing, mixnets) is out of scope.
 3. **Single-Dealer Threshold Setup**: The Shamir secret sharing setup relies on a single dealer (run in volatile browser memory or CLI) to generate the master key and polynomial shares. Distributed Key Generation (DKG) protocols to eliminate the dealer setup are out of scope.
 4. **Coercion Resistance & Receipt-Freeness**: A voter who reveals their private secret passphrase or random scalar $r$ can prove their ballot contents to a third party. The system does not provide deniable encryption or fake-credential decoys.

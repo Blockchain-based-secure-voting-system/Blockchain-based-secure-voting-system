@@ -81,7 +81,8 @@ pub fn build_app(pool: PgPool, admin_token: String) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
             let s = origin.to_str().unwrap_or("");
-            s.starts_with("http://localhost:")
+            s == "https://voting-murex-seven.vercel.app"
+                || s.starts_with("http://localhost:")
                 || s.starts_with("http://127.0.0.1:")
                 || s.ends_with(".vercel.app")
                 || s.ends_with(".onrender.com")

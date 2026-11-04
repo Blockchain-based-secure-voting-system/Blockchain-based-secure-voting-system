@@ -1,6 +1,6 @@
 import React from 'react';
 import { GLOSSARY, type GlossaryKey, type RoutePath, type ScreenOrientation, type WalkthroughRole } from '../content/copy';
-import { formatCanisterTime, isVotingDeadlineExpiredButPhaseOpen, PHASE_VOCABULARY, resolvePhaseKey } from '../content/errors';
+import { formatElectionTime, isVotingDeadlineExpiredButPhaseOpen, PHASE_VOCABULARY, resolvePhaseKey } from '../content/errors';
 import type { ElectionDetails } from '../types/election';
 
 interface GlossaryTermProps {
@@ -44,7 +44,7 @@ interface DeadlineBadgeProps {
 }
 
 export const DeadlineDisplay: React.FC<DeadlineBadgeProps> = ({ label, timestampNsOrSec }) => {
-  const formatted = formatCanisterTime(timestampNsOrSec);
+  const formatted = formatElectionTime(timestampNsOrSec);
   return (
     <span
       tabIndex={0}
@@ -122,8 +122,8 @@ export const OrientationBanner: React.FC<OrientationBannerProps> = ({
       {isDeadlineExpiredWhileOpen && (
         <div className="status-banner mb-4" role="status" aria-live="polite" data-testid="deadline-expired-banner">
           <span className="status-prefix">[DEADLINE PASSED — AWAITING ADMIN TRANSITION]:</span> The scheduled voting
-          closing time ({formatCanisterTime(electionDetails!.end_time).localFormatted} /{' '}
-          {formatCanisterTime(electionDetails!.end_time).utcFormatted}) has passed by wall-clock time. New ballots will
+          closing time ({formatElectionTime(electionDetails!.end_time).localFormatted} /{' '}
+          {formatElectionTime(electionDetails!.end_time).utcFormatted}) has passed by wall-clock time. New ballots will
           be rejected by the server deadline check, and the administrator should now transition the phase from{' '}
           <strong>Voting</strong> to <strong>Tallying</strong> in{' '}
           {onNavigate ? (

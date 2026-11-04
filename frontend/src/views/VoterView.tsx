@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { UseCanisterReturn } from '../hooks/useCanister';
+import type { UseElectionReturn } from '../hooks/useElection';
 import type { AuthContextType } from '../hooks/useAuth';
 import type { RoutePath, WalkthroughRole } from '../content/copy';
 import { createClientSideBallot, verifyClientRangeProof } from '../crypto';
@@ -31,16 +31,16 @@ async function computeCiphertextHashHex(c1Hex: string, c2Hex: string): Promise<s
 }
 
 export const VoterView: React.FC<{
-  canister: UseCanisterReturn;
+  election: UseElectionReturn;
   auth: AuthContextType;
   onNavigate?: (path: RoutePath) => void;
   onOpenWalkthrough?: (role: WalkthroughRole) => void;
-}> = ({ canister, auth, onNavigate, onOpenWalkthrough }) => {
-  const { electionDetails, loading, error, refreshState, castBallot } = canister;
+}> = ({ election, auth, onNavigate, onOpenWalkthrough }) => {
+  const { electionDetails, loading, error, refreshState, castBallot } = election;
 
   const [selectedVote, setSelectedVote] = useState<0 | 1 | null>(null);
   const [voterSecret, setVoterSecret] = useState('');
-  const [electionIdInput, setElectionIdInput] = useState('icp_election_2026');
+  const [electionIdInput, setElectionIdInput] = useState('election_2026');
   const [isConfirming, setIsConfirming] = useState(false);
   const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -78,14 +78,14 @@ export const VoterView: React.FC<{
 
   useEffect(() => {
     if (auth.principal && !auth.principal.isAnonymous()) {
-      canister
+      election
         .isRegisteredVoter(auth.principal)
         .then(setIsRegistered)
         .catch(() => setIsRegistered(false));
     } else {
       setIsRegistered(null);
     }
-  }, [auth.principal, canister]);
+  }, [auth.principal, election]);
 
   const validateFormInputs = (): boolean => {
     if (selectedVote !== 0 && selectedVote !== 1) {

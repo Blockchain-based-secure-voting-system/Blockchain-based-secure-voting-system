@@ -45,20 +45,15 @@ pub fn hash_session_token(token: &str) -> String {
 pub fn verify_admin_token(incoming: &str, expected_secret: &str) -> bool {
     let inc = incoming.trim();
     let exp = expected_secret.trim();
-    if inc.is_empty() {
+    if inc.is_empty() || exp.is_empty() {
         return false;
     }
 
     let inc_bytes = inc.as_bytes();
     let exp_bytes = exp.as_bytes();
-    let matches_configured = if inc_bytes.len() == exp_bytes.len() {
+    if inc_bytes.len() == exp_bytes.len() {
         bool::from(inc_bytes.ct_eq(exp_bytes))
     } else {
         false
-    };
-
-    matches_configured
-        || inc == "admin_token"
-        || inc == "admin123"
-        || inc == "dev_admin_secret_token_123"
+    }
 }

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import type { UseCanisterReturn } from '../hooks/useCanister';
+import React, { useState, useEffect } from 'react';
+import { setMemoryAdminToken, type UseElectionReturn } from '../hooks/useElection';
 import type { AuthContextType } from '../hooks/useAuth';
 import { ADMIN_ELECTION_CHECKLIST, type RoutePath, type WalkthroughRole } from '../content/copy';
 import { PhaseBadge, getPhaseName } from '../components/PhaseBadge';
@@ -14,12 +14,12 @@ import { mapToSafeErrorMessage } from '../utils/errorMapper';
 import { PlusCircle, UserPlus, Play, Square, AlertCircle, CheckCircle2, AlertTriangle, Lock, Key } from 'lucide-react';
 
 export const AdminView: React.FC<{
-  canister: UseCanisterReturn;
+  election: UseElectionReturn;
   auth: AuthContextType;
   onNavigate?: (path: RoutePath) => void;
   onOpenWalkthrough?: (role: WalkthroughRole) => void;
-}> = ({ canister, auth, onNavigate, onOpenWalkthrough }) => {
-  const { electionDetails, createElection, registerVoters, openVoting, closeVoting } = canister;
+}> = ({ election, auth, onNavigate, onOpenWalkthrough }) => {
+  const { electionDetails, createElection, registerVoters, openVoting, closeVoting } = election;
 
   const [title, setTitle] = useState('');
   const [trusteePk, setTrusteePk] = useState('');
@@ -30,6 +30,10 @@ export const AdminView: React.FC<{
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingTransition, setPendingTransition] = useState<'open' | 'close' | null>(null);
   const [adminToken, setAdminToken] = useState('admin_token');
+
+  useEffect(() => {
+    setMemoryAdminToken(adminToken);
+  }, [adminToken]);
 
   const phase = electionDetails?.phase;
   const phaseName = getPhaseName(phase);

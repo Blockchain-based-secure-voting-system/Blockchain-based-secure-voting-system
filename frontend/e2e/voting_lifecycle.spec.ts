@@ -67,7 +67,7 @@ test.describe('ICP Zero-Knowledge Voting UI, Full Lifecycle, IA Routes, Walkthro
     expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
 
     // 3. Verify Brand, 7 Navigation Routes, and Browser Back/Forward
-    await expect(page.locator('.brand-title')).toHaveText('ICP Zero-Knowledge Voting');
+    await expect(page.locator('.brand-title')).toHaveText('Zero-Knowledge Secure Voting');
     const navLinks = page.locator('nav[aria-label="Primary Navigation"] .role-tab-btn');
     await expect(navLinks).toHaveCount(7);
 

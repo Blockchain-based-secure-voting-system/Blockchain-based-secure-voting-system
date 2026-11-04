@@ -29,12 +29,7 @@ export const AdminView: React.FC<{
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingTransition, setPendingTransition] = useState<'open' | 'close' | null>(null);
-  const [adminToken, setAdminToken] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('admin_token') || 'admin_token';
-    }
-    return 'admin_token';
-  });
+  const [adminToken, setAdminToken] = useState('admin_token');
 
   const phase = electionDetails?.phase;
   const phaseName = getPhaseName(phase);
@@ -45,10 +40,6 @@ export const AdminView: React.FC<{
   const handleCreateElection = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatusMessage(null);
-
-    if (typeof window !== 'undefined' && adminToken.trim()) {
-      sessionStorage.setItem('admin_token', adminToken.trim());
-    }
 
     const titleCheck = validateElectionTitle(title);
     if (!titleCheck.valid) {
@@ -205,12 +196,7 @@ export const AdminView: React.FC<{
               className="form-input text-mono"
               style={{ maxWidth: '280px', height: '36px' }}
               value={adminToken}
-              onChange={(e) => {
-                setAdminToken(e.target.value);
-                if (typeof window !== 'undefined') {
-                  sessionStorage.setItem('admin_token', e.target.value);
-                }
-              }}
+              onChange={(e) => setAdminToken(e.target.value)}
             />
           </div>
         </div>

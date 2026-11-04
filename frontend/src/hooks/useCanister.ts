@@ -65,6 +65,18 @@ export function resolveConfiguredIcHost(explicitEnvHost?: string): string {
   return 'http://127.0.0.1:8080';
 }
 
+// Transient in-memory token state (strictly no localStorage/sessionStorage)
+let memoryAdminToken = 'admin_token';
+let memoryVoterSessionToken: string | null = null;
+
+export function setMemoryAdminToken(token: string) {
+  memoryAdminToken = token;
+}
+
+export function setMemoryVoterSessionToken(token: string | null) {
+  memoryVoterSessionToken = token;
+}
+
 export function resolveConfiguredCanisterId(customCanisterId?: string): string {
   if (customCanisterId && customCanisterId.trim().length > 0) {
     return customCanisterId.trim();
@@ -237,7 +249,7 @@ export function useCanister(_identity: Identity | null, _customCanisterId?: stri
       return 'Election created successfully';
     }
 
-    const adminToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || 'admin_token' : 'admin_token';
+    const adminToken = memoryAdminToken;
     const res = await fetchWithTimeout(`${apiUrl}/api/v1/admin/election`, {
       method: 'POST',
       headers: {
@@ -266,7 +278,7 @@ export function useCanister(_identity: Identity | null, _customCanisterId?: stri
       return BigInt(voters.length);
     }
 
-    const adminToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || 'admin_token' : 'admin_token';
+    const adminToken = memoryAdminToken;
     const res = await fetchWithTimeout(`${apiUrl}/api/v1/admin/credentials`, {
       method: 'POST',
       headers: {
@@ -290,7 +302,7 @@ export function useCanister(_identity: Identity | null, _customCanisterId?: stri
       return 'Voting opened successfully';
     }
 
-    const adminToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || 'admin_token' : 'admin_token';
+    const adminToken = memoryAdminToken;
     const res = await fetchWithTimeout(`${apiUrl}/api/v1/admin/open-voting`, {
       method: 'POST',
       headers: {
@@ -311,7 +323,7 @@ export function useCanister(_identity: Identity | null, _customCanisterId?: stri
       return 'Voting closed successfully';
     }
 
-    const adminToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || 'admin_token' : 'admin_token';
+    const adminToken = memoryAdminToken;
     const res = await fetchWithTimeout(`${apiUrl}/api/v1/admin/close-voting`, {
       method: 'POST',
       headers: {
@@ -364,8 +376,8 @@ export function useCanister(_identity: Identity | null, _customCanisterId?: stri
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
 
-    // If voter session token is not already in sessionStorage, perform login using credential code
-    let sessionToken = typeof window !== 'undefined' ? sessionStorage.getItem('voter_session_token') : null;
+    // If voter session token is not already in memory, perform login using credential code
+    let sessionToken = memoryVoterSessionToken;
     if (!sessionToken && credentialCode) {
       const loginRes = await fetchWithTimeout(`${apiUrl}/api/v1/voter/login`, {
         method: 'POST',
@@ -377,9 +389,7 @@ export function useCanister(_identity: Identity | null, _customCanisterId?: stri
       }
       const loginData = await loginRes.json();
       sessionToken = loginData.session_token;
-      if (typeof window !== 'undefined' && sessionToken) {
-        sessionStorage.setItem('voter_session_token', sessionToken);
-      }
+      memoryVoterSessionToken = sessionToken;
     }
 
     const res = await fetchWithTimeout(`${apiUrl}/api/v1/ballots`, {
@@ -412,7 +422,7 @@ export function useCanister(_identity: Identity | null, _customCanisterId?: stri
       return proof.decrypted_tally ?? 1n;
     }
 
-    const adminToken = typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || 'admin_token' : 'admin_token';
+    const adminToken = memoryAdminToken;
     const res = await fetchWithTimeout(`${apiUrl}/api/v1/admin/finalize-tally`, {
       method: 'POST',
       headers: {

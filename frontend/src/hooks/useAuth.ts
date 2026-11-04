@@ -71,16 +71,7 @@ export function useAuth(): AuthContextType {
         }
       }
 
-      // Check if session token exists in sessionStorage (in-memory per tab)
-      if (typeof window !== 'undefined') {
-        const storedToken = sessionStorage.getItem('voter_session_token');
-        if (storedToken) {
-          const p = Principal.fromText('voter-session');
-          setPrincipal(p);
-          setIdentity({ getPrincipal: () => p });
-          setSessionToken(storedToken);
-        }
-      }
+      // In-memory authentication state only
     } catch {
       // Safe fallback
     } finally {
@@ -110,9 +101,6 @@ export function useAuth(): AuthContextType {
   };
 
   const logout = async () => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('voter_session_token');
-    }
     clearAuthState(false);
   };
 
